@@ -8,12 +8,14 @@ import {
   ChevronDown,
   CircleUserRound,
   Headphones,
+  History,
   Languages,
   LoaderCircle,
   LogOut,
   Mic,
   MicOff,
   Plane,
+  Plus,
   Send,
   Sparkles,
   Volume2,
@@ -21,6 +23,7 @@ import {
 } from 'lucide-react';
 import { authApi, tutorApi } from './services/api';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
+import './history.css';
 
 const TOPICS = [
   { id: 'daily', label: 'Daily conversation', icon: Languages, description: 'Everyday situations and natural phrases' },
@@ -65,6 +68,9 @@ function App() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [progress, setProgress] = useState(null);
+  const [sessions, setSessions] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
   const endRef = useRef(null);
 
   const onSpeechResult = useCallback((transcript) => {
@@ -73,24 +79,39 @@ function App() {
 
   const speech = useSpeechRecognition({ onResult: onSpeechResult });
 
+  const loadSessions = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const data = await tutorApi.getSessions();
+      setSessions(data.sessions || []);
+      setHistoryError('');
+    } catch (error) {
+      setHistoryError(error.message);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
   useEffect(() => {
-    const restoreUser = async () => {
-      if (!localStorage.getItem('speakflow_token')) return;
-      try {
-        const data = await authApi.me();
-        setUser(data.user);
-        const progressData = await tutorApi.getProgress();
-        setProgress(progressData.progress);
-      } catch {
-        localStorage.removeItem('speakflow_token');
+    const initialise = async () => {
+      if (localStorage.getItem('speakflow_token')) {
+        try {
+          const data = await authApi.me();
+          setUser(data.user);
+          const progressData = await tutorApi.getProgress();
+          setProgress(progressData.progress);
+        } catch {
+          localStorage.removeItem('speakflow_token');
+        }
       }
+      await loadSessions();
     };
-    restoreUser();
-  }, []);
+    initialise();
+  }, [loadSessions]);
 
   const selectedTopic = useMemo(
     () => TOPICS.find((item) => item.id === topic) || TOPICS[0],
@@ -124,6 +145,12 @@ function App() {
       setMessages((current) => [...current, tutorMessage]);
       if (data.sessionId) setSessionId(data.sessionId);
       if (data.interactionId) setInteractionId(data.interactionId);
+      if (data.saved) {
+        setHistoryError('');
+        loadSessions();
+      } else if (data.saveMessage) {
+        setHistoryError(data.saveMessage);
+      }
       if (autoSpeak) {
         const spokenFeedback = data.correction
           ? `${data.reply} You said: ${data.correction.original}. A better way to say it is: ${data.correction.corrected}.`
@@ -154,6 +181,47 @@ function App() {
     }]);
   };
 
+  const startNewChat = () => {
+    setSessionId(null);
+    setInteractionId(null);
+    setMessages([{
+      role: 'assistant',
+      reply: `${getTopicStarter(topic, level)} Your new conversation will be saved automatically.`,
+      correction: null,
+    }]);
+  };
+
+  const openSession = async (selectedSessionId) => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const data = await tutorApi.getSession(selectedSessionId);
+      const savedSession = data.session;
+      const restoredMessages = savedSession.messages.map((item) => (
+        item.role === 'user'
+          ? { role: 'user', text: item.text }
+          : {
+              role: 'assistant',
+              reply: item.text,
+              correction: item.correction,
+              meaning: item.meaning,
+              vocabulary: item.vocabulary,
+              encouragement: item.encouragement,
+            }
+      ));
+      setSessionId(savedSession.id);
+      setInteractionId(savedSession.interactionId || null);
+      setTopic(savedSession.topic || 'daily');
+      setLevel(savedSession.level || 'Beginner');
+      setMessages(restoredMessages.length ? restoredMessages : [WELCOME]);
+      setHistoryError('');
+    } catch (error) {
+      setHistoryError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const submitAuth = async (event) => {
     event.preventDefault();
     setAuthError('');
@@ -168,8 +236,10 @@ function App() {
       setInteractionId(null);
       setAuthOpen(false);
       setAuthForm({ name: '', email: '', password: '' });
+      await tutorApi.claimSessions();
       const progressData = await tutorApi.getProgress();
       setProgress(progressData.progress);
+      await loadSessions();
     } catch (error) {
       setAuthError(error.message);
     } finally {
@@ -177,12 +247,14 @@ function App() {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     localStorage.removeItem('speakflow_token');
     setUser(null);
     setProgress(null);
     setSessionId(null);
     setInteractionId(null);
+    setMessages([WELCOME]);
+    await loadSessions();
   };
 
   return (
@@ -203,7 +275,7 @@ function App() {
               <button className="icon-button" onClick={logout} aria-label="Log out"><LogOut size={18} /></button>
             </div>
           ) : (
-            <button className="secondary-button" onClick={() => setAuthOpen(true)}>Save progress</button>
+            <button className="secondary-button" onClick={() => setAuthOpen(true)}>Sync chats</button>
           )}
         </div>
       </header>
@@ -260,10 +332,40 @@ function App() {
             </div>
           </section>
 
+          <section className="history-card">
+            <div className="history-heading">
+              <div>
+                <span className="label">Saved chats</span>
+                <strong><History size={17} /> Recent conversations</strong>
+              </div>
+              <button className="new-chat-button" onClick={startNewChat} aria-label="Start new chat"><Plus size={18} /></button>
+            </div>
+            {historyError && <div className="history-error">{historyError}</div>}
+            {historyLoading ? (
+              <div className="history-empty"><LoaderCircle className="spin" size={18} /> Loading chats…</div>
+            ) : sessions.length ? (
+              <div className="history-list">
+                {sessions.slice(0, 8).map((item) => (
+                  <button
+                    key={item.id}
+                    className={`history-item ${sessionId === item.id ? 'active' : ''}`}
+                    onClick={() => openSession(item.id)}
+                  >
+                    <strong>{item.title}</strong>
+                    <span>{getTopicLabel(item.topic)} · {formatSessionDate(item.updatedAt)}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="history-empty">Your first conversation will appear here automatically.</div>
+            )}
+            <small className="history-note">{user ? 'Saved to your account.' : 'Saved for this browser. Sign in to sync across devices.'}</small>
+          </section>
+
           <section className="progress-card">
             <div className="progress-title">
               <span className="topic-icon"><BarChart3 size={19} /></span>
-              <div><strong>Your progress</strong><small>{user ? 'Synced to your account' : 'Sign in to save it'}</small></div>
+              <div><strong>Your progress</strong><small>{user ? 'Synced to your account' : 'Chat history saves automatically'}</small></div>
             </div>
             <div className="stat-grid">
               <div><strong>{progress?.messagesPractised || 0}</strong><span>Answers</span></div>
@@ -278,7 +380,7 @@ function App() {
             <div>
               <div className="online-line"><span className="online-dot" /> Free tutor online</div>
               <h2>{selectedTopic.label}</h2>
-              <p>{level} lesson · browser voice enabled</p>
+              <p>{level} lesson · browser voice enabled · chats auto-save</p>
             </div>
           </div>
 
@@ -323,7 +425,7 @@ function App() {
                 {loading ? <LoaderCircle className="spin" size={20} /> : <Send size={20} />}
               </button>
             </div>
-            <p className="composer-hint">Press Enter to send · Your microphone audio is handled by your browser</p>
+            <p className="composer-hint">Press Enter to send · Chats are saved to your private browser ID or account</p>
           </div>
         </section>
       </main>
@@ -334,7 +436,7 @@ function App() {
             <button className="modal-close" onClick={() => setAuthOpen(false)}><X size={20} /></button>
             <span className="brand-mark large"><Sparkles size={24} /></span>
             <h2>{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
-            <p>Save your practice count and correction history across devices.</p>
+            <p>Sync your saved conversations, practice count, and corrections across devices.</p>
             <form onSubmit={submitAuth}>
               {authMode === 'register' && (
                 <label>Full name<input required value={authForm.name} onChange={(event) => setAuthForm({ ...authForm, name: event.target.value })} /></label>
@@ -391,14 +493,24 @@ function MessageBubble({ message, onSpeak }) {
   );
 }
 
-function getTopicStarter(topic, level) {
+function getTopicStarter(currentTopic, currentLevel) {
   const prompts = {
     daily: 'Tell me what you usually do in the morning.',
     interview: 'Please introduce yourself as if this were a job interview.',
     travel: 'Imagine you have just arrived at a hotel. What would you say at reception?',
     pronunciation: 'Say this sentence clearly: “I would like to improve my spoken English.”',
   };
-  return `${prompts[topic]} I’ll respond at ${level.toLowerCase()} level.`;
+  return `${prompts[currentTopic]} I’ll respond at ${currentLevel.toLowerCase()} level.`;
+}
+
+function getTopicLabel(topicId) {
+  return TOPICS.find((item) => item.id === topicId)?.label || 'English practice';
+}
+
+function formatSessionDate(value) {
+  if (!value) return 'Recently';
+  const date = new Date(value);
+  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(date);
 }
 
 export default App;
