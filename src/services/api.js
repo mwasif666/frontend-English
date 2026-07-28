@@ -1,4 +1,16 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://english-tutorial-1ejj.vercel.app/api';
+
+const getGuestId = () => {
+  const storageKey = 'speakflow_guest_id';
+  let guestId = localStorage.getItem(storageKey);
+  if (guestId) return guestId;
+
+  guestId = globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID().replaceAll('-', '_')
+    : `guest_${Date.now()}_${Math.random().toString(36).slice(2, 14)}`;
+  localStorage.setItem(storageKey, guestId);
+  return guestId;
+};
 
 const request = async (path, options = {}) => {
   const token = localStorage.getItem('speakflow_token');
@@ -6,6 +18,7 @@ const request = async (path, options = {}) => {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      'X-Guest-ID': getGuestId(),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
@@ -24,6 +37,10 @@ export const tutorApi = {
     body: JSON.stringify(payload),
   }),
   getProgress: () => request('/tutor/progress'),
+  getSessions: () => request('/tutor/sessions'),
+  getSession: (sessionId) => request(`/tutor/sessions/${sessionId}`),
+  deleteSession: (sessionId) => request(`/tutor/sessions/${sessionId}`, { method: 'DELETE' }),
+  claimSessions: () => request('/tutor/sessions/claim', { method: 'POST' }),
 };
 
 export const authApi = {
