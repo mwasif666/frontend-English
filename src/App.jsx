@@ -480,6 +480,13 @@ function App() {
     speakText,
   };
 
+  const resetLocalProgress = () => {
+    localStorage.removeItem(LOCAL_DASHBOARD_KEY);
+    setCurrentMetrics(null);
+    setDashboard({ ...EMPTY_DASHBOARD, databaseConnected: dashboard.databaseConnected });
+    loadDashboard();
+  };
+
   return (
     <div className="app-shell">
       <div className="ambient-green ambient-green-one" />
@@ -496,11 +503,15 @@ function App() {
             recommendedTopic={dashboard.recommendedTopic}
             historyLoading={historyLoading}
             historyError={historyError}
+            autoSpeak={autoSpeak}
+            speech={speechControls}
             onLevelChange={setLevel}
             onTopicChange={startTopic}
             onAddTopic={addCustomTopic}
             onOpenSession={openSession}
             onNewChat={startNewChat}
+            onToggleSpeak={() => setAutoSpeak((value) => !value)}
+            onResetProgress={resetLocalProgress}
           />
         </div>
 

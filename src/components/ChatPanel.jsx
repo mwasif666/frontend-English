@@ -3,15 +3,38 @@ import {
   BarChart3,
   BookOpen,
   CheckCircle2,
+  Info,
   Lightbulb,
   LoaderCircle,
   Mic,
   MicOff,
   Send,
   Sparkles,
+  TriangleAlert,
   Volume2,
 } from 'lucide-react';
 import ScoreRing from './ScoreRing';
+
+export const buildVoiceNotice = (speech) => {
+  if (speech.error) {
+    return {
+      tone: 'warning',
+      text: speech.error,
+      canRetry: speech.supported && speech.permission !== 'granted',
+    };
+  }
+  if (!speech.supported) {
+    return { tone: 'info', text: speech.unsupportedReason, canRetry: false };
+  }
+  if (speech.permission === 'denied') {
+    return {
+      tone: 'warning',
+      text: 'The microphone is blocked for this site. Allow it to practise by speaking.',
+      canRetry: true,
+    };
+  }
+  return null;
+};
 
 function VoiceBars({ active }) {
   return (
@@ -174,6 +197,7 @@ export default function ChatPanel({
 }) {
   const hasConversation = messages.some((item) => item.role === 'user');
   const composerRef = useRef(null);
+  const voiceNotice = buildVoiceNotice(speech);
   const selectQuestion = (question) => {
     onQuestionChange(question);
     window.requestAnimationFrame(() => composerRef.current?.focus());
@@ -226,8 +250,17 @@ export default function ChatPanel({
       </div>
 
       <footer className="composer-zone">
-        {speech.error && <div className="composer-alert">{speech.error}</div>}
-        {!speech.supported && <div className="composer-alert">Voice recognition is unavailable here. You can still type.</div>}
+        {voiceNotice && (
+          <div className={`composer-alert ${voiceNotice.tone}`} role="status">
+            {voiceNotice.tone === 'warning' ? <TriangleAlert size={15} /> : <Info size={15} />}
+            <p>{voiceNotice.text}</p>
+            {voiceNotice.canRetry && (
+              <button type="button" onClick={speech.requestMicrophone} disabled={speech.requestingPermission}>
+                {speech.requestingPermission ? 'Asking…' : 'Allow microphone'}
+              </button>
+            )}
+          </div>
+        )}
 
         {practiceQuestion && !hasConversation && (
           <div className="composer-question">
@@ -272,6 +305,7 @@ export default function ChatPanel({
             type="button"
             onClick={speech.isListening ? speech.stopListening : speech.startListening}
             disabled={!speech.supported}
+            title={speech.supported ? 'Speak your answer' : speech.unsupportedReason}
             aria-label={speech.isListening ? 'Stop listening' : 'Start speaking'}
           >
             {speech.isListening ? <MicOff size={19} /> : <Mic size={19} />}
