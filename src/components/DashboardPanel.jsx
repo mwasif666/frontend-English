@@ -12,17 +12,17 @@ import {
 import ScoreRing from './ScoreRing';
 
 const metricLabels = {
-  grammar: 'Grammar',
-  vocabulary: 'Vocabulary',
+  grammar: 'Grammar accuracy',
+  vocabulary: 'Vocabulary range',
   fluency: 'Fluency',
   pronunciation: 'Pronunciation',
 };
 
 const buildPolyline = (weekly = []) => {
   const values = weekly.map((item) => Number(item.score) || 0);
-  const width = 280;
-  const height = 92;
-  const padding = 8;
+  const width = 640;
+  const height = 180;
+  const padding = 16;
   const max = Math.max(100, ...values);
   const step = values.length > 1 ? (width - padding * 2) / (values.length - 1) : width;
   return values.map((value, index) => {
@@ -55,108 +55,126 @@ export default function DashboardPanel({ dashboard, currentMetrics, onStartRecom
   const improvement = Number(dashboard.improvement) || 0;
 
   return (
-    <aside className="insights-panel">
-      <section className="dashboard-hero-card reveal-card">
-        <div className="dashboard-hero-copy">
-          <span className="mini-label"><Sparkles size={13} /> Today’s English</span>
-          <h2>{effectiveScore ? 'You are sounding stronger.' : 'Your progress starts here.'}</h2>
-          <p>
-            {effectiveScore
-              ? `Your latest answer scored ${Math.round(effectiveScore)}%. Keep the conversation going.`
-              : 'Speak or type your first answer to unlock live coaching analytics.'}
-          </p>
-          <div className={`trend-pill ${improvement < 0 ? 'down' : ''}`}>
-            <TrendingUp size={15} />
-            {improvement ? `${improvement > 0 ? '+' : ''}${improvement}% vs earlier answers` : 'Live score updates'}
-          </div>
+    <div className="analytics-dashboard view-enter">
+      <div className="view-heading dashboard-heading">
+        <div>
+          <span className="section-kicker">Learning analytics</span>
+          <h2>Your English progress</h2>
+          <p>Track how your grammar, vocabulary, fluency and speaking confidence improve over time.</p>
         </div>
-        <ScoreRing score={effectiveScore} size={132} label="score" />
-      </section>
+        <div className={`dashboard-cloud-state ${dashboard.databaseConnected ? 'connected' : ''}`}>
+          <i />
+          {dashboard.databaseConnected ? 'Cloud history connected' : 'Local progress mode'}
+        </div>
+      </div>
 
-      <section className="metric-card reveal-card delay-1">
-        <div className="card-heading compact">
+      <div className="dashboard-summary-grid">
+        <section className="dashboard-score-card">
           <div>
-            <span className="mini-label">Skill breakdown</span>
-            <h3>How your English sounds</h3>
+            <span className="mini-label"><Sparkles size={13} /> Today’s English</span>
+            <h3>{effectiveScore ? 'You are sounding stronger.' : 'Complete your first answer.'}</h3>
+            <p>
+              {effectiveScore
+                ? `Your latest answer scored ${Math.round(effectiveScore)}%. Keep practising to strengthen your weakest skill.`
+                : 'Your score will appear after you type or speak an English answer.'}
+            </p>
+            <span className={`trend-pill ${improvement < 0 ? 'down' : ''}`}>
+              <TrendingUp size={15} />
+              {improvement ? `${improvement > 0 ? '+' : ''}${improvement}% compared with earlier answers` : 'Live score updates'}
+            </span>
           </div>
-          <Target size={19} />
-        </div>
-        <div className="metric-stack">
-          {Object.keys(metricLabels).map((name) => (
-            <MetricBar key={name} name={name} value={effectiveMetrics?.[name] ?? null} />
-          ))}
-        </div>
-      </section>
+          <ScoreRing score={effectiveScore} size={150} label="overall" />
+        </section>
 
-      <section className="trend-card reveal-card delay-2">
-        <div className="card-heading compact">
-          <div>
-            <span className="mini-label">Last seven days</span>
-            <h3>Practice momentum</h3>
+        <section className="dashboard-stat-grid">
+          <article>
+            <span className="stat-icon orange"><Flame size={18} /></span>
+            <strong>{dashboard.totals?.streak || 0}</strong>
+            <small>day streak</small>
+          </article>
+          <article>
+            <span className="stat-icon green"><MessageCircle size={18} /></span>
+            <strong>{dashboard.totals?.answers || 0}</strong>
+            <small>answers</small>
+          </article>
+          <article>
+            <span className="stat-icon blue"><Type size={18} /></span>
+            <strong>{dashboard.totals?.words || 0}</strong>
+            <small>words used</small>
+          </article>
+          <article>
+            <span className="stat-icon purple"><BookOpen size={18} /></span>
+            <strong>{dashboard.totals?.sessions || 0}</strong>
+            <small>sessions</small>
+          </article>
+        </section>
+      </div>
+
+      <div className="dashboard-detail-grid">
+        <section className="dashboard-chart-card">
+          <div className="card-heading compact">
+            <div>
+              <span className="mini-label">Last seven days</span>
+              <h3>Practice momentum</h3>
+            </div>
+            <TrendingUp size={19} />
           </div>
-          <TrendingUp size={19} />
-        </div>
-        <div className="line-chart-wrap">
-          <svg className="line-chart" viewBox="0 0 280 100" preserveAspectRatio="none" aria-label="Weekly English score graph">
-            <polyline className="line-chart-shadow" points={polyline} fill="none" />
-            <polyline className="line-chart-line" points={polyline} fill="none" />
-          </svg>
-          <div className="chart-labels">
-            {weekly.map((item) => (
-              <span key={item.date || item.label}>{item.label}</span>
+          <div className="line-chart-wrap">
+            <svg className="line-chart" viewBox="0 0 640 190" preserveAspectRatio="none" aria-label="Weekly English score graph">
+              <defs>
+                <linearGradient id="progressArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#54e85d" stopOpacity="0.34" />
+                  <stop offset="100%" stopColor="#54e85d" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <polyline className="line-chart-shadow" points={polyline} fill="none" />
+              <polyline className="line-chart-line" points={polyline} fill="none" />
+            </svg>
+            <div className="chart-labels">
+              {weekly.map((item) => <span key={item.date || item.label}>{item.label}</span>)}
+            </div>
+          </div>
+        </section>
+
+        <section className="metric-card">
+          <div className="card-heading compact">
+            <div>
+              <span className="mini-label">Skill breakdown</span>
+              <h3>How your English sounds</h3>
+            </div>
+            <Target size={19} />
+          </div>
+          <div className="metric-stack">
+            {Object.keys(metricLabels).map((name) => (
+              <MetricBar key={name} name={name} value={effectiveMetrics?.[name] ?? null} />
             ))}
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
-      <section className="dashboard-stat-grid reveal-card delay-3">
-        <article>
-          <span className="stat-icon orange"><Flame size={18} /></span>
-          <strong>{dashboard.totals?.streak || 0}</strong>
-          <small>day streak</small>
-        </article>
-        <article>
-          <span className="stat-icon purple"><MessageCircle size={18} /></span>
-          <strong>{dashboard.totals?.answers || 0}</strong>
-          <small>answers</small>
-        </article>
-        <article>
-          <span className="stat-icon blue"><Type size={18} /></span>
-          <strong>{dashboard.totals?.words || 0}</strong>
-          <small>words used</small>
-        </article>
-        <article>
-          <span className="stat-icon green"><BookOpen size={18} /></span>
-          <strong>{dashboard.totals?.sessions || 0}</strong>
-          <small>sessions</small>
-        </article>
-      </section>
-
-      <section className="coach-tip-card reveal-card delay-4">
-        <div className="tip-icon"><Award size={20} /></div>
+      <section className="coach-tip-card">
+        <span className="tip-icon"><Award size={20} /></span>
         <div>
           <span className="mini-label">Coach recommendation</span>
-          <h3>Try your next weak area</h3>
+          <h3>Practise your next weak area</h3>
           <p>
             {dashboard.recommendedTopic
-              ? `A short ${dashboard.recommendedTopic.replaceAll('-', ' ')} practice can improve your balance.`
-              : 'Complete a few answers and Nova will recommend your next topic.'}
+              ? `A short ${dashboard.recommendedTopic.replaceAll('-', ' ')} conversation can improve your balance.`
+              : 'Complete a few answers and SpeakFlow will recommend your next topic.'}
           </p>
         </div>
-        <button type="button" onClick={() => onStartRecommended?.(dashboard.recommendedTopic || 'daily')}>
-          Start
-        </button>
+        <button type="button" onClick={() => onStartRecommended?.(dashboard.recommendedTopic || 'daily')}>Start practice</button>
       </section>
 
       {!dashboard.databaseConnected && (
         <section className="database-alert">
           <AlertTriangle size={18} />
           <div>
-            <strong>Cloud tracking is offline</strong>
-            <p>Your live score still works. Connect MongoDB to save charts and chats across visits.</p>
+            <strong>Cloud history is currently offline</strong>
+            <p>Your live scores still work locally. Connect MongoDB to save chats and analytics across browsers and devices.</p>
           </div>
         </section>
       )}
-    </aside>
+    </div>
   );
 }
