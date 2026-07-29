@@ -9,9 +9,8 @@ import {
   Volume2,
   X,
 } from 'lucide-react';
-import ChatPanel from './components/ChatPanel';
-import DashboardPanel from './components/DashboardPanel';
 import PracticeSidebar from './components/PracticeSidebar';
+import Workspace from './components/Workspace';
 import { EMPTY_DASHBOARD, DEFAULT_TOPICS, WELCOME_MESSAGE } from './data/defaults';
 import { authApi, tutorApi } from './services/api';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
@@ -153,15 +152,11 @@ function App() {
   const loadTopics = useCallback(async () => {
     try {
       const data = await tutorApi.getTopics();
-      if (data.topics?.length) {
-        setTopics(data.topics);
-        const current = data.topics.find((topic) => topic.id === topicId);
-        if (current?.starters) setSentenceSuggestions(current.starters);
-      }
+      if (data.topics?.length) setTopics(data.topics);
     } catch {
       setTopics(DEFAULT_TOPICS);
     }
-  }, [topicId]);
+  }, []);
 
   const loadWorkspace = useCallback(async () => {
     await Promise.all([loadSessions(), loadDashboard(), loadTopics()]);
@@ -181,6 +176,10 @@ function App() {
     };
     initialise();
   }, [loadWorkspace]);
+
+  useEffect(() => {
+    setSentenceSuggestions(selectedTopic.starters || []);
+  }, [selectedTopic]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -328,11 +327,8 @@ function App() {
     setInteractionId(null);
     setCurrentMetrics(null);
     setMessage('');
-    setMessages([{
-      role: 'assistant',
-      reply: `${selectedTopic.prompt} Your answers will be analysed as you go.`,
-      correction: null,
-    }]);
+    setMessages([WELCOME_MESSAGE]);
+    setMobileMenuOpen(false);
   };
 
   const openSession = async (selectedSessionId) => {
@@ -408,50 +404,10 @@ function App() {
 
   return (
     <div className="app-shell">
-      <div className="ambient-gradient ambient-one" />
-      <div className="ambient-gradient ambient-two" />
-      <div className="ambient-grid" />
+      <div className="ambient-green ambient-green-one" />
+      <div className="ambient-green ambient-green-two" />
 
-      <header className="topbar">
-        <div className="topbar-left">
-          <button className="mobile-menu-button" type="button" onClick={() => setMobileMenuOpen((value) => !value)}>
-            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
-          <a className="brand" href="#top" aria-label="SpeakFlow home">
-            <span className="brand-mark"><Sparkles size={20} /></span>
-            <span>
-              <strong>SpeakFlow</strong>
-              <small>English growth studio</small>
-            </span>
-          </a>
-        </div>
-
-        <div className="topbar-status">
-          <span className={dashboard.databaseConnected ? 'connected' : ''}>
-            {dashboard.databaseConnected ? <ShieldCheck size={16} /> : <CloudOff size={16} />}
-            {dashboard.databaseConnected ? 'Cloud tracking active' : 'Local tracking mode'}
-          </span>
-        </div>
-
-        <div className="header-actions">
-          <button type="button" className={`header-voice ${autoSpeak ? 'active' : ''}`} onClick={() => setAutoSpeak((value) => !value)}>
-            <Volume2 size={17} />
-            <span>Voice replies</span>
-          </button>
-          {user ? (
-            <div className="user-menu">
-              <span><CircleUserRound size={18} /> {user.name}</span>
-              <button type="button" onClick={logout} aria-label="Log out"><LogOut size={18} /></button>
-            </div>
-          ) : (
-            <button type="button" className="sync-button" onClick={() => setAuthOpen(true)}>
-              Sync progress
-            </button>
-          )}
-        </div>
-      </header>
-
-      <main className="dashboard-layout" id="top">
+      <main className="app-frame" id="top">
         <div className={`sidebar-shell ${mobileMenuOpen ? 'open' : ''}`}>
           <PracticeSidebar
             topics={topics}
@@ -469,29 +425,67 @@ function App() {
           />
         </div>
 
-        <ChatPanel
-          topic={selectedTopic}
-          level={level}
-          messages={messages}
-          loading={loading}
-          message={message}
-          wordSuggestions={wordSuggestions}
-          sentenceSuggestions={sentenceSuggestions}
-          autoSpeak={autoSpeak}
-          speech={speechControls}
-          onMessageChange={handleMessageChange}
-          onSend={sendMessage}
-          onWordSuggestion={handleWordSuggestion}
-          onSentenceSuggestion={handleSentenceSuggestion}
-          onToggleSpeak={() => setAutoSpeak((value) => !value)}
-          endRef={endRef}
-        />
+        {mobileMenuOpen && (
+          <button className="sidebar-backdrop" type="button" aria-label="Close navigation" onClick={() => setMobileMenuOpen(false)} />
+        )}
 
-        <DashboardPanel
-          dashboard={dashboard}
-          currentMetrics={currentMetrics}
-          onStartRecommended={startTopic}
-        />
+        <section className="workspace-shell">
+          <header className="workspace-topbar">
+            <div className="workspace-title-group">
+              <button className="mobile-menu-button" type="button" onClick={() => setMobileMenuOpen((value) => !value)}>
+                {mobileMenuOpen ? <X size={19} /> : <Menu size={19} />}
+              </button>
+              <div>
+                <span>English learning workspace</span>
+                <h1>{selectedTopic.label}</h1>
+              </div>
+              <span className="level-badge">{level}</span>
+            </div>
+
+            <div className="workspace-header-actions">
+              <span className={`cloud-pill ${dashboard.databaseConnected ? 'connected' : ''}`}>
+                {dashboard.databaseConnected ? <ShieldCheck size={15} /> : <CloudOff size={15} />}
+                {dashboard.databaseConnected ? 'Cloud saved' : 'Local mode'}
+              </span>
+              <button type="button" className={`header-voice ${autoSpeak ? 'active' : ''}`} onClick={() => setAutoSpeak((value) => !value)}>
+                <Volume2 size={16} />
+              </button>
+              {user ? (
+                <div className="user-menu">
+                  <span><CircleUserRound size={17} /> {user.name}</span>
+                  <button type="button" onClick={logout} aria-label="Log out"><LogOut size={17} /></button>
+                </div>
+              ) : (
+                <button type="button" className="sync-button" onClick={() => setAuthOpen(true)}>Sync progress</button>
+              )}
+            </div>
+          </header>
+
+          <Workspace
+            topic={selectedTopic}
+            topicId={topicId}
+            topics={topics}
+            level={level}
+            messages={messages}
+            loading={loading}
+            message={message}
+            wordSuggestions={wordSuggestions}
+            sentenceSuggestions={sentenceSuggestions}
+            autoSpeak={autoSpeak}
+            speech={speechControls}
+            dashboard={dashboard}
+            currentMetrics={currentMetrics}
+            onMessageChange={handleMessageChange}
+            onSend={sendMessage}
+            onWordSuggestion={handleWordSuggestion}
+            onSentenceSuggestion={handleSentenceSuggestion}
+            onToggleSpeak={() => setAutoSpeak((value) => !value)}
+            onTopicChange={startTopic}
+            onLevelChange={setLevel}
+            onStartRecommended={startTopic}
+            endRef={endRef}
+          />
+        </section>
       </main>
 
       {authOpen && (
@@ -501,7 +495,7 @@ function App() {
             <span className="brand-mark large"><Sparkles size={24} /></span>
             <span className="mini-label">Your learning account</span>
             <h2>{authMode === 'login' ? 'Welcome back' : 'Create your profile'}</h2>
-            <p>Sync conversations, scores, streaks, and weekly progress across devices.</p>
+            <p>Sync conversations, scores, streaks and weekly progress across devices.</p>
             <form onSubmit={submitAuth}>
               {authMode === 'register' && (
                 <label>Full name<input required value={authForm.name} onChange={(event) => setAuthForm({ ...authForm, name: event.target.value })} /></label>
