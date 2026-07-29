@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { mergeTranscripts } from '../utils/transcript';
+import { buildRecognitionTranscript, mergeTranscripts } from '../utils/transcript';
 
 const getRecognitionClass = () => {
   if (typeof window === 'undefined') return null;
@@ -71,11 +71,7 @@ export const useSpeechRecognition = ({ onResult, language = 'en-US' }) => {
     };
 
     recognition.onresult = (event) => {
-      const results = Array.from(event.results);
-      const transcript = results
-        .map((result) => result[0].transcript)
-        .join(' ')
-        .trim();
+      const transcript = buildRecognitionTranscript(event.results);
       currentTranscriptRef.current = transcript;
       const completeTranscript = mergeTranscripts(
         accumulatedTranscriptRef.current,
