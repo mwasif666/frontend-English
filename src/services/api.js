@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'https://english-tutorial-1ejj.vercel.app/api';
+const API_URL = (import.meta.env.VITE_API_URL || 'https://english-tutorial-1ejj.vercel.app/api').replace(/\/+$/, '');
 
 const getGuestId = () => {
   const storageKey = 'speakflow_guest_id';
@@ -14,21 +14,36 @@ const getGuestId = () => {
 
 const request = async (path, options = {}) => {
   const token = localStorage.getItem('speakflow_token');
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Guest-ID': getGuestId(),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
+  let response;
+
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Guest-ID': getGuestId(),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    });
+  } catch {
+    throw new Error('The English tutor API is unreachable. Check the backend deployment and CORS settings.');
+  }
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.message || 'Something went wrong. Please try again.');
+    throw new Error(data.message || `The tutor API returned ${response.status}.`);
   }
   return data;
+};
+
+const params = (values) => {
+  const query = new URLSearchParams();
+  Object.entries(values).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') query.set(key, value);
+  });
+  const result = query.toString();
+  return result ? `?${result}` : '';
 };
 
 export const tutorApi = {
@@ -37,6 +52,11 @@ export const tutorApi = {
     body: JSON.stringify(payload),
   }),
   getProgress: () => request('/tutor/progress'),
+  getDashboard: () => request('/tutor/dashboard'),
+  getTopics: () => request('/tutor/suggestions/topics'),
+  getWordSuggestions: ({ query, context, topic }) => request(
+    `/tutor/suggestions/words${params({ q: query, context, topic })}`,
+  ),
   getSessions: () => request('/tutor/sessions'),
   getSession: (sessionId) => request(`/tutor/sessions/${sessionId}`),
   deleteSession: (sessionId) => request(`/tutor/sessions/${sessionId}`, { method: 'DELETE' }),

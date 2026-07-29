@@ -5,6 +5,8 @@ export const useSpeechRecognition = ({ onResult, language = 'en-US' }) => {
   const [isListening, setIsListening] = useState(false);
   const [supported, setSupported] = useState(true);
   const [error, setError] = useState('');
+  const [lastConfidence, setLastConfidence] = useState(null);
+  const [lastInputMode, setLastInputMode] = useState('typed');
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -22,15 +24,20 @@ export const useSpeechRecognition = ({ onResult, language = 'en-US' }) => {
     recognition.onstart = () => {
       setError('');
       setIsListening(true);
+      setLastInputMode('speech');
     };
 
     recognition.onresult = (event) => {
-      const transcript = Array.from(event.results)
+      const results = Array.from(event.results);
+      const transcript = results
         .map((result) => result[0].transcript)
         .join(' ')
         .trim();
-      const finalResult = event.results[event.results.length - 1].isFinal;
-      onResult(transcript, finalResult);
+      const latestResult = event.results[event.results.length - 1];
+      const finalResult = latestResult.isFinal;
+      const confidence = Number(latestResult[0]?.confidence);
+      if (Number.isFinite(confidence) && confidence > 0) setLastConfidence(confidence);
+      onResult(transcript, finalResult, Number.isFinite(confidence) ? confidence : null);
     };
 
     recognition.onerror = (event) => {
@@ -62,5 +69,19 @@ export const useSpeechRecognition = ({ onResult, language = 'en-US' }) => {
     recognitionRef.current?.stop();
   }, []);
 
-  return { isListening, supported, error, startListening, stopListening };
+  const markTyped = useCallback(() => {
+    setLastInputMode('typed');
+    setLastConfidence(null);
+  }, []);
+
+  return {
+    isListening,
+    supported,
+    error,
+    lastConfidence,
+    lastInputMode,
+    startListening,
+    stopListening,
+    markTyped,
+  };
 };
