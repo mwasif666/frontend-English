@@ -14,6 +14,7 @@ import Workspace from './components/Workspace';
 import { EMPTY_DASHBOARD, DEFAULT_TOPICS, WELCOME_MESSAGE } from './data/defaults';
 import { authApi, tutorApi } from './services/api';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
+import { mergeTranscripts } from './utils/transcript';
 
 const LOCAL_DASHBOARD_KEY = 'speakflow_local_dashboard_v2';
 const CUSTOM_TOPICS_KEY = 'speakflow_custom_topics_v1';
@@ -159,8 +160,7 @@ function App() {
   const speechBaseRef = useRef('');
 
   const onSpeechResult = useCallback((transcript) => {
-    const base = speechBaseRef.current.trim();
-    setMessage([base, transcript].filter(Boolean).join(base ? ' ' : ''));
+    setMessage(mergeTranscripts(speechBaseRef.current, transcript));
   }, []);
 
   const speech = useSpeechRecognition({ onResult: onSpeechResult });

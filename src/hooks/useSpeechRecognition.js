@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { mergeTranscripts } from '../utils/transcript';
 
 const getRecognitionClass = () => {
   if (typeof window === 'undefined') return null;
@@ -76,10 +77,10 @@ export const useSpeechRecognition = ({ onResult, language = 'en-US' }) => {
         .join(' ')
         .trim();
       currentTranscriptRef.current = transcript;
-      const completeTranscript = [
+      const completeTranscript = mergeTranscripts(
         accumulatedTranscriptRef.current,
         currentTranscriptRef.current,
-      ].filter(Boolean).join(' ');
+      );
       const latestResult = event.results[event.results.length - 1];
       const finalResult = latestResult.isFinal;
       const confidence = Number(latestResult[0]?.confidence);
@@ -111,10 +112,10 @@ export const useSpeechRecognition = ({ onResult, language = 'en-US' }) => {
 
     recognition.onend = () => {
       if (listeningRequestedRef.current) {
-        accumulatedTranscriptRef.current = [
+        accumulatedTranscriptRef.current = mergeTranscripts(
           accumulatedTranscriptRef.current,
           currentTranscriptRef.current,
-        ].filter(Boolean).join(' ');
+        );
         currentTranscriptRef.current = '';
         restartTimerRef.current = window.setTimeout(() => {
           try {
