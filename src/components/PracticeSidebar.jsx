@@ -1,19 +1,19 @@
 import {
+  BarChart3,
   BriefcaseBusiness,
   Building2,
-  ChartNoAxesCombined,
   Check,
   ChevronRight,
   Headphones,
   History,
   Languages,
   LoaderCircle,
-  MessageSquareText,
-  Mic2,
+  MessageSquare,
+  Mic,
+  Monitor,
   PhoneCall,
   Plane,
   Plus,
-  Presentation,
   ShoppingBag,
   Sparkles,
 } from 'lucide-react';
@@ -23,7 +23,7 @@ const ICONS = {
   daily: Languages,
   interview: BriefcaseBusiness,
   business: Building2,
-  presentation: Presentation,
+  presentation: Monitor,
   travel: Plane,
   phone: PhoneCall,
   shopping: ShoppingBag,
@@ -69,7 +69,7 @@ export default function PracticeSidebar({
             <span className="mini-label">Difficulty</span>
             <h2>Choose your level</h2>
           </div>
-          <ChartNoAxesCombined size={19} />
+          <BarChart3 size={19} />
         </div>
         <div className="level-selector">
           {LEVELS.map((item) => (
@@ -89,11 +89,11 @@ export default function PracticeSidebar({
       <section className="sidebar-section reveal-card delay-2">
         <div className="section-label-row">
           <span className="mini-label">Suggested practice</span>
-          <Mic2 size={17} />
+          <Mic size={17} />
         </div>
         <div className="topic-stack">
           {topics.map((item) => {
-            const Icon = ICONS[item.id] || MessageSquareText;
+            const Icon = ICONS[item.id] || MessageSquare;
             const selected = selectedTopic === item.id;
             const recommended = recommendedTopic === item.id || item.recommended;
             return (
