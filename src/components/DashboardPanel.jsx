@@ -1,13 +1,13 @@
 import {
+  AlertTriangle,
   Award,
-  BookOpenCheck,
+  BookOpen,
   Flame,
-  MessageCircleMore,
+  MessageCircle,
   Sparkles,
   Target,
   TrendingUp,
-  TriangleAlert,
-  Words,
+  Type,
 } from 'lucide-react';
 import ScoreRing from './ScoreRing';
 
@@ -98,12 +98,6 @@ export default function DashboardPanel({ dashboard, currentMetrics, onStartRecom
         </div>
         <div className="line-chart-wrap">
           <svg className="line-chart" viewBox="0 0 280 100" preserveAspectRatio="none" aria-label="Weekly English score graph">
-            <defs>
-              <linearGradient id="lineArea" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="currentColor" stopOpacity="0.24" />
-                <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
-              </linearGradient>
-            </defs>
             <polyline className="line-chart-shadow" points={polyline} fill="none" />
             <polyline className="line-chart-line" points={polyline} fill="none" />
           </svg>
@@ -122,17 +116,17 @@ export default function DashboardPanel({ dashboard, currentMetrics, onStartRecom
           <small>day streak</small>
         </article>
         <article>
-          <span className="stat-icon purple"><MessageCircleMore size={18} /></span>
+          <span className="stat-icon purple"><MessageCircle size={18} /></span>
           <strong>{dashboard.totals?.answers || 0}</strong>
           <small>answers</small>
         </article>
         <article>
-          <span className="stat-icon blue"><Words size={18} /></span>
+          <span className="stat-icon blue"><Type size={18} /></span>
           <strong>{dashboard.totals?.words || 0}</strong>
           <small>words used</small>
         </article>
         <article>
-          <span className="stat-icon green"><BookOpenCheck size={18} /></span>
+          <span className="stat-icon green"><BookOpen size={18} /></span>
           <strong>{dashboard.totals?.sessions || 0}</strong>
           <small>sessions</small>
         </article>
@@ -156,7 +150,7 @@ export default function DashboardPanel({ dashboard, currentMetrics, onStartRecom
 
       {!dashboard.databaseConnected && (
         <section className="database-alert">
-          <TriangleAlert size={18} />
+          <AlertTriangle size={18} />
           <div>
             <strong>Cloud tracking is offline</strong>
             <p>Your live score still works. Connect MongoDB to save charts and chats across visits.</p>
