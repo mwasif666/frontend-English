@@ -55,13 +55,9 @@ const createCustomTopic = (label) => {
     label: cleanLabel,
     description: `Personal practice for ${cleanLabel}.`,
     prompt: `Let's practise ${cleanLabel}. Explain the situation and what you want to achieve.`,
-    questions: [
-      `How would you start a conversation about ${cleanLabel}?`,
-      `What is the most important point to explain about ${cleanLabel}?`,
-      `What questions might the other person ask about ${cleanLabel}?`,
-      `How would you politely handle a disagreement during ${cleanLabel}?`,
-    ],
-    starters: ['I would like to discuss...', 'The main point is...', 'To make sure we are aligned...'],
+    questions: [],
+    questionMeanings: [],
+    starters: [],
     accent: 'green',
     isCustom: true,
   };
@@ -136,6 +132,10 @@ function App() {
   const [sentenceSuggestions, setSentenceSuggestions] = useState(DEFAULT_TOPICS[0].starters);
   const [practiceQuestion, setPracticeQuestion] = useState(DEFAULT_TOPICS[0].questions[0]);
   const [wordSuggestions, setWordSuggestions] = useState([]);
+  const [grammarIssues, setGrammarIssues] = useState([]);
+  const [grammarSuggestion, setGrammarSuggestion] = useState(null);
+  const [practiceLoading, setPracticeLoading] = useState(false);
+  const [practiceRevision, setPracticeRevision] = useState(0);
   const [sessionId, setSessionId] = useState(null);
   const [interactionId, setInteractionId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -154,9 +154,13 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const endRef = useRef(null);
   const suggestionRequest = useRef(0);
+  const writingRequest = useRef(0);
+  const practiceRequest = useRef(0);
+  const speechBaseRef = useRef('');
 
   const onSpeechResult = useCallback((transcript) => {
-    setMessage(transcript);
+    const base = speechBaseRef.current.trim();
+    setMessage([base, transcript].filter(Boolean).join(base ? ' ' : ''));
   }, []);
 
   const speech = useSpeechRecognition({ onResult: onSpeechResult });
@@ -238,6 +242,46 @@ function App() {
   }, [selectedTopic]);
 
   useEffect(() => {
+    const requestId = practiceRequest.current + 1;
+    practiceRequest.current = requestId;
+    setPracticeLoading(true);
+
+    const refreshPractice = async () => {
+      try {
+        const data = await tutorApi.generatePractice({
+          topic: selectedTopic.id,
+          topicLabel: selectedTopic.label,
+          level,
+        });
+        if (practiceRequest.current !== requestId || !data.practice?.questions?.length) return;
+        const practice = data.practice;
+        setTopics((current) => current.map((item) => (
+          item.id === selectedTopic.id
+            ? {
+                ...item,
+                description: practice.description || item.description,
+                questions: practice.questions,
+                questionMeanings: practice.questionMeanings || [],
+                starters: practice.starters?.length ? practice.starters : item.starters,
+                grounded: practice.grounded,
+              }
+            : item
+        )));
+        setPracticeQuestion(practice.questions[0]);
+        setSentenceSuggestions(practice.starters || []);
+      } catch {
+        // Existing local prompts remain available when AI generation is offline.
+      } finally {
+        if (practiceRequest.current === requestId) setPracticeLoading(false);
+      }
+    };
+
+    refreshPractice();
+  // A new set is intentionally generated only when the selected topic or level changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topicId, level, practiceRevision]);
+
+  useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, loading]);
 
@@ -271,6 +315,34 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [message, selectedTopic.starters, topicId]);
 
+  useEffect(() => {
+    const text = message.trim();
+    if (text.length < 3) {
+      setGrammarIssues([]);
+      setGrammarSuggestion(null);
+      return undefined;
+    }
+
+    const timer = window.setTimeout(async () => {
+      const requestId = writingRequest.current + 1;
+      writingRequest.current = requestId;
+      try {
+        const data = await tutorApi.checkWriting(message);
+        if (writingRequest.current !== requestId) return;
+        setGrammarIssues(data.issues || []);
+        setGrammarSuggestion(data.issues?.length ? {
+          corrected: data.corrected,
+          explanation: data.explanation,
+        } : null);
+      } catch {
+        setGrammarIssues([]);
+        setGrammarSuggestion(null);
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
   const handleMessageChange = (value) => {
     setMessage(value);
     if (!speech.isListening) speech.markTyped();
@@ -291,12 +363,22 @@ function App() {
     speech.markTyped();
   };
 
+  const applyGrammarSuggestion = () => {
+    if (!grammarSuggestion?.corrected) return;
+    setMessage(grammarSuggestion.corrected);
+    setGrammarIssues([]);
+    setGrammarSuggestion(null);
+    speech.markTyped();
+  };
+
   const sendMessage = async () => {
     const cleanMessage = message.trim();
     if (!cleanMessage || loading) return;
 
     setMessages((current) => [...current, { role: 'user', text: cleanMessage }]);
     setMessage('');
+    setGrammarIssues([]);
+    setGrammarSuggestion(null);
     setWordSuggestions([]);
     setLoading(true);
 
@@ -325,6 +407,7 @@ function App() {
           role: 'assistant',
           reply: data.reply,
           correction: data.correction,
+          replyMeaning: data.replyMeaning,
           meaning: data.meaning,
           vocabulary: data.vocabulary,
           encouragement: data.encouragement,
@@ -369,10 +452,13 @@ function App() {
       || DEFAULT_TOPICS.find((item) => item.id === newTopicId)
       || DEFAULT_TOPICS[0];
     setTopicId(nextTopic.id);
+    setPracticeRevision((current) => current + 1);
     setSessionId(null);
     setInteractionId(null);
     setCurrentMetrics(null);
     setMessage('');
+    setGrammarIssues([]);
+    setGrammarSuggestion(null);
     setSentenceSuggestions(nextTopic.starters || []);
     setPracticeQuestion(nextTopic.questions?.[0] || nextTopic.prompt);
     setMessages([{
@@ -405,6 +491,8 @@ function App() {
     setInteractionId(null);
     setCurrentMetrics(null);
     setMessage('');
+    setGrammarIssues([]);
+    setGrammarSuggestion(null);
     setMessages([WELCOME_MESSAGE]);
     setMobileMenuOpen(false);
   };
@@ -422,6 +510,7 @@ function App() {
               role: 'assistant',
               reply: item.text,
               correction: item.correction,
+              replyMeaning: item.replyMeaning,
               meaning: item.meaning,
               vocabulary: item.vocabulary,
               encouragement: item.encouragement,
@@ -477,6 +566,10 @@ function App() {
 
   const speechControls = {
     ...speech,
+    startListening: async () => {
+      speechBaseRef.current = message.trimEnd();
+      await speech.startListening();
+    },
     speakText,
   };
 
@@ -560,8 +653,11 @@ function App() {
             loading={loading}
             message={message}
             wordSuggestions={wordSuggestions}
+            grammarIssues={grammarIssues}
+            grammarSuggestion={grammarSuggestion}
             sentenceSuggestions={sentenceSuggestions}
             practiceQuestion={practiceQuestion}
+            practiceLoading={practiceLoading}
             autoSpeak={autoSpeak}
             speech={speechControls}
             dashboard={dashboard}
@@ -569,6 +665,7 @@ function App() {
             onMessageChange={handleMessageChange}
             onSend={sendMessage}
             onWordSuggestion={handleWordSuggestion}
+            onApplyGrammar={applyGrammarSuggestion}
             onSentenceSuggestion={handleSentenceSuggestion}
             onQuestionChange={setPracticeQuestion}
             onToggleSpeak={() => setAutoSpeak((value) => !value)}

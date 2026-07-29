@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import {
   BarChart3,
   BookOpen,
@@ -75,6 +75,13 @@ function MessageBubble({ message, onSpeak }) {
           )}
         </div>
 
+        {message.replyMeaning && (
+          <div className="reply-meaning">
+            <span>Roman Urdu</span>
+            <p>{message.replyMeaning}</p>
+          </div>
+        )}
+
         {message.metrics?.overall ? (
           <div className="inline-score-card">
             <ScoreRing score={message.metrics.overall} size={76} label="score" compact />
@@ -120,6 +127,7 @@ function WelcomeState({
   topic,
   activeQuestion,
   sentenceSuggestions,
+  practiceLoading,
   onQuestionChange,
   onSentenceSuggestion,
   onOpenTopics,
@@ -128,6 +136,8 @@ function WelcomeState({
   const starters = (sentenceSuggestions || topic.starters || []).slice(0, 3);
   const questions = (topic.questions?.length ? topic.questions : [topic.prompt]).filter(Boolean).slice(0, 4);
   const selectedQuestion = activeQuestion || questions[0];
+  const questionIndex = Math.max(0, questions.indexOf(selectedQuestion));
+  const selectedMeaning = topic.questionMeanings?.[questionIndex];
 
   return (
     <div className="chat-welcome view-enter">
@@ -139,9 +149,10 @@ function WelcomeState({
       <div className="practice-question-panel">
         <div className="practice-question-heading">
           <span>Recommended questions</span>
-          <small>{questions.length} prompts</small>
+          <small>{practiceLoading ? 'Finding fresh prompts…' : `${questions.length} fresh prompts`}</small>
         </div>
         <strong>{selectedQuestion}</strong>
+        {selectedMeaning && <p className="question-meaning">{selectedMeaning}</p>}
         <div className="practice-question-options">
           {questions.map((question, index) => (
             <button
@@ -181,13 +192,17 @@ export default function ChatPanel({
   loading,
   message,
   wordSuggestions,
+  grammarIssues,
+  grammarSuggestion,
   sentenceSuggestions,
   practiceQuestion,
+  practiceLoading,
   autoSpeak,
   speech,
   onMessageChange,
   onSend,
   onWordSuggestion,
+  onApplyGrammar,
   onSentenceSuggestion,
   onQuestionChange,
   onToggleSpeak,
@@ -197,7 +212,51 @@ export default function ChatPanel({
 }) {
   const hasConversation = messages.some((item) => item.role === 'user');
   const composerRef = useRef(null);
+  const textLayerRef = useRef(null);
   const voiceNotice = buildVoiceNotice(speech);
+  const questionIndex = Math.max(0, (topic.questions || []).indexOf(practiceQuestion));
+  const practiceQuestionMeaning = topic.questionMeanings?.[questionIndex];
+  const inlineSuggestion = useMemo(() => {
+    if (!message || /\s$/.test(message) || !wordSuggestions.length) return null;
+    const currentWord = message.trimEnd().split(/\s+/).at(-1) || '';
+    const suggestion = wordSuggestions.find((item) => (
+      item.toLowerCase().startsWith(currentWord.toLowerCase())
+      && item.toLowerCase() !== currentWord.toLowerCase()
+    ));
+    return suggestion ? { suggestion, suffix: suggestion.slice(currentWord.length) } : null;
+  }, [message, wordSuggestions]);
+
+  const highlightedMessage = useMemo(() => {
+    if (!message) return null;
+    const issues = [...(grammarIssues || [])]
+      .filter((issue) => Number.isFinite(issue.start) && Number.isFinite(issue.end))
+      .sort((first, second) => first.start - second.start);
+    const parts = [];
+    let cursor = 0;
+    issues.forEach((issue, index) => {
+      const start = Math.max(cursor, Math.min(message.length, issue.start));
+      const end = Math.max(start, Math.min(message.length, issue.end));
+      if (start > cursor) parts.push(message.slice(cursor, start));
+      if (end > start) {
+        parts.push(<mark key={`${start}-${end}-${index}`} title={issue.message}>{message.slice(start, end)}</mark>);
+      }
+      cursor = end;
+    });
+    if (cursor < message.length) parts.push(message.slice(cursor));
+    return parts;
+  }, [grammarIssues, message]);
+
+  useLayoutEffect(() => {
+    const textarea = composerRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    const styles = window.getComputedStyle(textarea);
+    const lineHeight = Number.parseFloat(styles.lineHeight) || 22;
+    const verticalPadding = Number.parseFloat(styles.paddingTop) + Number.parseFloat(styles.paddingBottom);
+    const maxHeight = (lineHeight * 4) + verticalPadding;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }, [message]);
   const selectQuestion = (question) => {
     onQuestionChange(question);
     window.requestAnimationFrame(() => composerRef.current?.focus());
@@ -223,6 +282,7 @@ export default function ChatPanel({
             topic={topic}
             activeQuestion={practiceQuestion}
             sentenceSuggestions={sentenceSuggestions}
+            practiceLoading={practiceLoading}
             onQuestionChange={selectQuestion}
             onSentenceSuggestion={onSentenceSuggestion}
             onOpenTopics={onOpenTopics}
@@ -265,7 +325,10 @@ export default function ChatPanel({
         {practiceQuestion && !hasConversation && (
           <div className="composer-question">
             <span>Answering</span>
-            <strong>{practiceQuestion}</strong>
+            <div>
+              <strong>{practiceQuestion}</strong>
+              {practiceQuestionMeaning && <small>{practiceQuestionMeaning}</small>}
+            </div>
           </div>
         )}
 
@@ -280,15 +343,44 @@ export default function ChatPanel({
           </div>
         )}
 
+        {grammarSuggestion && (
+          <div className="grammar-suggestion" role="status">
+            <div>
+              <span>Grammar suggestion</span>
+              <strong>{grammarSuggestion.corrected}</strong>
+              {grammarSuggestion.explanation && <small>{grammarSuggestion.explanation}</small>}
+            </div>
+            <button type="button" onClick={onApplyGrammar}>Apply</button>
+          </div>
+        )}
+
         <div className={`composer ${speech.isListening ? 'listening' : ''}`}>
           <span className="composer-brand"><Sparkles size={18} /></span>
 
           <div className="composer-input">
+            <div
+              ref={textLayerRef}
+              className="composer-text-layer"
+              aria-hidden="true"
+            >
+              {highlightedMessage}
+              {inlineSuggestion && <span className="inline-completion">{inlineSuggestion.suffix}</span>}
+            </div>
             <textarea
               ref={composerRef}
               value={message}
               onChange={(event) => onMessageChange(event.target.value)}
+              onScroll={(event) => {
+                if (!textLayerRef.current) return;
+                textLayerRef.current.scrollTop = event.currentTarget.scrollTop;
+                textLayerRef.current.scrollLeft = event.currentTarget.scrollLeft;
+              }}
               onKeyDown={(event) => {
+                if (event.key === 'Tab' && inlineSuggestion) {
+                  event.preventDefault();
+                  onWordSuggestion(inlineSuggestion.suggestion);
+                  return;
+                }
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault();
                   onSend();
@@ -296,6 +388,9 @@ export default function ChatPanel({
               }}
               placeholder={speech.isListening ? 'Listening... speak naturally' : 'Type or speak your answer...'}
               rows="1"
+              spellCheck="true"
+              autoCorrect="on"
+              autoCapitalize="sentences"
             />
             <VoiceBars active={speech.isListening} />
           </div>

@@ -57,6 +57,14 @@ export const tutorApi = {
   getWordSuggestions: ({ query, context, topic }) => request(
     `/tutor/suggestions/words${params({ q: query, context, topic })}`,
   ),
+  generatePractice: (payload) => request('/tutor/suggestions/practice', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  checkWriting: (text) => request('/tutor/writing-check', {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  }),
   getSessions: () => request('/tutor/sessions'),
   getSession: (sessionId) => request(`/tutor/sessions/${sessionId}`),
   deleteSession: (sessionId) => request(`/tutor/sessions/${sessionId}`, { method: 'DELETE' }),

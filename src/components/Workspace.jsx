@@ -60,7 +60,15 @@ function TopicsView({
         </div>
       </div>
 
-      <div className="topic-library-search">
+      <form
+        className="topic-library-search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!canCreateTopic) return;
+          onAddTopic(query);
+          onOpenChat();
+        }}
+      >
         <Search size={18} />
         <input
           value={query}
@@ -70,17 +78,13 @@ function TopicsView({
         />
         {canCreateTopic && (
           <button
-            type="button"
-            onClick={() => {
-              onAddTopic(query);
-              onOpenChat();
-            }}
+            type="submit"
           >
             <Plus size={16} />
-            Add topic
+            Generate practice
           </button>
         )}
-      </div>
+      </form>
 
       <div className="topic-browser-grid">
         {filteredTopics.map((topic, index) => (
@@ -115,8 +119,11 @@ export default function Workspace({
   loading,
   message,
   wordSuggestions,
+  grammarIssues,
+  grammarSuggestion,
   sentenceSuggestions,
   practiceQuestion,
+  practiceLoading,
   autoSpeak,
   speech,
   dashboard,
@@ -124,6 +131,7 @@ export default function Workspace({
   onMessageChange,
   onSend,
   onWordSuggestion,
+  onApplyGrammar,
   onSentenceSuggestion,
   onQuestionChange,
   onToggleSpeak,
@@ -174,13 +182,17 @@ export default function Workspace({
             loading={loading}
             message={message}
             wordSuggestions={wordSuggestions}
+            grammarIssues={grammarIssues}
+            grammarSuggestion={grammarSuggestion}
             sentenceSuggestions={sentenceSuggestions}
             practiceQuestion={practiceQuestion}
+            practiceLoading={practiceLoading}
             autoSpeak={autoSpeak}
             speech={speech}
             onMessageChange={onMessageChange}
             onSend={onSend}
             onWordSuggestion={onWordSuggestion}
+            onApplyGrammar={onApplyGrammar}
             onSentenceSuggestion={onSentenceSuggestion}
             onQuestionChange={onQuestionChange}
             onToggleSpeak={onToggleSpeak}

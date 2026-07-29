@@ -20,6 +20,11 @@ const describeUnsupported = () => {
 
 export const useSpeechRecognition = ({ onResult, language = 'en-US' }) => {
   const recognitionRef = useRef(null);
+  const listeningRequestedRef = useRef(false);
+  const silenceTimerRef = useRef(null);
+  const restartTimerRef = useRef(null);
+  const accumulatedTranscriptRef = useRef('');
+  const currentTranscriptRef = useRef('');
   const [isListening, setIsListening] = useState(false);
   const [supported, setSupported] = useState(() => Boolean(getRecognitionClass()));
   const [unsupportedReason, setUnsupportedReason] = useState(() => (getRecognitionClass() ? '' : describeUnsupported()));
@@ -39,14 +44,29 @@ export const useSpeechRecognition = ({ onResult, language = 'en-US' }) => {
 
     const recognition = new SpeechRecognition();
     recognition.lang = language;
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
+
+    const clearTimers = () => {
+      window.clearTimeout(silenceTimerRef.current);
+      window.clearTimeout(restartTimerRef.current);
+    };
+
+    const armSilenceTimer = () => {
+      window.clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = window.setTimeout(() => {
+        listeningRequestedRef.current = false;
+        recognition.stop();
+        setIsListening(false);
+      }, 10000);
+    };
 
     recognition.onstart = () => {
       setError('');
       setIsListening(true);
       setLastInputMode('speech');
+      armSilenceTimer();
     };
 
     recognition.onresult = (event) => {
@@ -55,11 +75,17 @@ export const useSpeechRecognition = ({ onResult, language = 'en-US' }) => {
         .map((result) => result[0].transcript)
         .join(' ')
         .trim();
+      currentTranscriptRef.current = transcript;
+      const completeTranscript = [
+        accumulatedTranscriptRef.current,
+        currentTranscriptRef.current,
+      ].filter(Boolean).join(' ');
       const latestResult = event.results[event.results.length - 1];
       const finalResult = latestResult.isFinal;
       const confidence = Number(latestResult[0]?.confidence);
       if (Number.isFinite(confidence) && confidence > 0) setLastConfidence(confidence);
-      onResult(transcript, finalResult, Number.isFinite(confidence) ? confidence : null);
+      onResult(completeTranscript, finalResult, Number.isFinite(confidence) ? confidence : null);
+      armSilenceTimer();
     };
 
     recognition.onerror = (event) => {
@@ -67,7 +93,8 @@ export const useSpeechRecognition = ({ onResult, language = 'en-US' }) => {
         setPermission('denied');
         setError('The microphone is blocked for this site. Open the padlock icon in the address bar, allow the microphone, then try again.');
       } else if (event.error === 'no-speech') {
-        setError('I could not hear anything. Move closer to the microphone and try again.');
+        // Browsers often report no-speech after only a couple of seconds.
+        // Keep the requested session alive; our own ten-second silence timer controls it.
       } else if (event.error === 'audio-capture') {
         setError('No microphone was found. Connect one and reload the page.');
       } else if (event.error === 'network') {
@@ -75,15 +102,42 @@ export const useSpeechRecognition = ({ onResult, language = 'en-US' }) => {
       } else if (event.error !== 'aborted') {
         setError('Voice recognition stopped unexpectedly. Please try again.');
       }
-      setIsListening(false);
+      if (event.error !== 'no-speech') {
+        listeningRequestedRef.current = false;
+        clearTimers();
+        setIsListening(false);
+      }
     };
 
-    recognition.onend = () => setIsListening(false);
+    recognition.onend = () => {
+      if (listeningRequestedRef.current) {
+        accumulatedTranscriptRef.current = [
+          accumulatedTranscriptRef.current,
+          currentTranscriptRef.current,
+        ].filter(Boolean).join(' ');
+        currentTranscriptRef.current = '';
+        restartTimerRef.current = window.setTimeout(() => {
+          try {
+            recognition.start();
+          } catch {
+            listeningRequestedRef.current = false;
+            setIsListening(false);
+          }
+        }, 120);
+        return;
+      }
+      clearTimers();
+      setIsListening(false);
+    };
     recognitionRef.current = recognition;
     setSupported(true);
     setUnsupportedReason('');
 
-    return () => recognition.abort();
+    return () => {
+      listeningRequestedRef.current = false;
+      clearTimers();
+      recognition.abort();
+    };
   }, [language, onResult]);
 
   useEffect(() => {
@@ -151,14 +205,22 @@ export const useSpeechRecognition = ({ onResult, language = 'en-US' }) => {
     }
 
     try {
+      listeningRequestedRef.current = true;
+      accumulatedTranscriptRef.current = '';
+      currentTranscriptRef.current = '';
       recognitionRef.current.start();
     } catch {
+      listeningRequestedRef.current = false;
       setError('The microphone is already active.');
     }
   }, [isListening, permission, requestMicrophone, unsupportedReason]);
 
   const stopListening = useCallback(() => {
+    listeningRequestedRef.current = false;
+    window.clearTimeout(silenceTimerRef.current);
+    window.clearTimeout(restartTimerRef.current);
     recognitionRef.current?.stop();
+    setIsListening(false);
   }, []);
 
   const markTyped = useCallback(() => {
