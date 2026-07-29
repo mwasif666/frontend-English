@@ -5,6 +5,8 @@ import {
   Check,
   Languages,
   MessageSquare,
+  Plus,
+  Search,
   Share2,
 } from 'lucide-react';
 import ChatPanel from './ChatPanel';
@@ -16,8 +18,24 @@ const TABS = [
   { id: 'progress', label: 'Progress', icon: BarChart3 },
 ];
 
-function TopicsView({ topics, selectedTopicId, level, onTopicChange, onLevelChange, onOpenChat }) {
+function TopicsView({
+  topics,
+  selectedTopicId,
+  level,
+  onTopicChange,
+  onAddTopic,
+  onLevelChange,
+  onOpenChat,
+}) {
   const levels = ['Beginner', 'Intermediate', 'Advanced'];
+  const [query, setQuery] = useState('');
+  const normalisedQuery = query.trim().toLowerCase();
+  const queryTerms = normalisedQuery.split(/\s+/).filter(Boolean);
+  const filteredTopics = topics.filter((topic) => {
+    const searchableText = `${topic.label} ${topic.description}`.toLowerCase();
+    return !queryTerms.length || queryTerms.every((term) => searchableText.includes(term));
+  });
+  const canCreateTopic = normalisedQuery.length >= 3 && filteredTopics.length === 0;
 
   return (
     <div className="topics-view view-enter">
@@ -42,8 +60,30 @@ function TopicsView({ topics, selectedTopicId, level, onTopicChange, onLevelChan
         </div>
       </div>
 
+      <div className="topic-library-search">
+        <Search size={18} />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search a situation, e.g. project discussion with client"
+          aria-label="Search or create a practice topic"
+        />
+        {canCreateTopic && (
+          <button
+            type="button"
+            onClick={() => {
+              onAddTopic(query);
+              onOpenChat();
+            }}
+          >
+            <Plus size={16} />
+            Add topic
+          </button>
+        )}
+      </div>
+
       <div className="topic-browser-grid">
-        {topics.map((topic) => (
+        {filteredTopics.map((topic, index) => (
           <button
             type="button"
             key={topic.id}
@@ -53,7 +93,7 @@ function TopicsView({ topics, selectedTopicId, level, onTopicChange, onLevelChan
               onOpenChat();
             }}
           >
-            <span className="topic-index">{String(topics.indexOf(topic) + 1).padStart(2, '0')}</span>
+            <span className="topic-index">{String(index + 1).padStart(2, '0')}</span>
             <div>
               <strong>{topic.label}</strong>
               <p>{topic.description}</p>
@@ -76,6 +116,7 @@ export default function Workspace({
   message,
   wordSuggestions,
   sentenceSuggestions,
+  practiceQuestion,
   autoSpeak,
   speech,
   dashboard,
@@ -84,8 +125,10 @@ export default function Workspace({
   onSend,
   onWordSuggestion,
   onSentenceSuggestion,
+  onQuestionChange,
   onToggleSpeak,
   onTopicChange,
+  onAddTopic,
   onLevelChange,
   onStartRecommended,
   endRef,
@@ -132,12 +175,14 @@ export default function Workspace({
             message={message}
             wordSuggestions={wordSuggestions}
             sentenceSuggestions={sentenceSuggestions}
+            practiceQuestion={practiceQuestion}
             autoSpeak={autoSpeak}
             speech={speech}
             onMessageChange={onMessageChange}
             onSend={onSend}
             onWordSuggestion={onWordSuggestion}
             onSentenceSuggestion={onSentenceSuggestion}
+            onQuestionChange={onQuestionChange}
             onToggleSpeak={onToggleSpeak}
             onOpenTopics={() => setActiveTab('topics')}
             onOpenProgress={() => setActiveTab('progress')}
@@ -151,6 +196,7 @@ export default function Workspace({
             selectedTopicId={topicId}
             level={level}
             onTopicChange={onTopicChange}
+            onAddTopic={onAddTopic}
             onLevelChange={onLevelChange}
             onOpenChat={() => setActiveTab('chat')}
           />

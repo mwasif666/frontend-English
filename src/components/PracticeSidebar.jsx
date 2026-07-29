@@ -26,6 +26,7 @@ const ICONS = {
   daily: Languages,
   interview: BriefcaseBusiness,
   business: Building2,
+  'client-project': BriefcaseBusiness,
   presentation: Monitor,
   travel: Plane,
   phone: PhoneCall,
@@ -50,23 +51,27 @@ export default function PracticeSidebar({
   historyError,
   onLevelChange,
   onTopicChange,
+  onAddTopic,
   onOpenSession,
   onNewChat,
 }) {
   const [query, setQuery] = useState('');
   const normalisedQuery = query.trim().toLowerCase();
+  const queryTerms = normalisedQuery.split(/\s+/).filter(Boolean);
 
   const filteredTopics = useMemo(() => (
-    topics.filter((item) => !normalisedQuery
-      || item.label.toLowerCase().includes(normalisedQuery)
-      || item.description.toLowerCase().includes(normalisedQuery))
-  ), [normalisedQuery, topics]);
+    topics.filter((item) => {
+      const searchableText = `${item.label} ${item.description}`.toLowerCase();
+      return !queryTerms.length || queryTerms.every((term) => searchableText.includes(term));
+    })
+  ), [queryTerms, topics]);
 
   const filteredSessions = useMemo(() => (
     sessions.filter((item) => !normalisedQuery
       || item.title.toLowerCase().includes(normalisedQuery)
       || item.preview?.toLowerCase().includes(normalisedQuery))
   ), [normalisedQuery, sessions]);
+  const canCreateTopic = normalisedQuery.length >= 3 && filteredTopics.length === 0;
 
   return (
     <aside className="practice-sidebar">
@@ -88,7 +93,7 @@ export default function PracticeSidebar({
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search topics or chats"
+          placeholder="Search or create a topic"
           aria-label="Search topics or chats"
         />
       </div>
@@ -139,6 +144,23 @@ export default function PracticeSidebar({
               </button>
             );
           })}
+          {canCreateTopic && (
+            <button
+              type="button"
+              className="create-topic-result"
+              onClick={() => {
+                onAddTopic(query);
+                setQuery('');
+              }}
+            >
+              <span className="sidebar-topic-icon"><Plus size={16} /></span>
+              <span className="sidebar-topic-copy">
+                <strong>Add “{query.trim()}”</strong>
+                <small>Create questions and practise this situation</small>
+              </span>
+              <span className="create-pill">Create</span>
+            </button>
+          )}
         </div>
       </section>
 

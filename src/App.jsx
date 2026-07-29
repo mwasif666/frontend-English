@@ -16,6 +16,56 @@ import { authApi, tutorApi } from './services/api';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 
 const LOCAL_DASHBOARD_KEY = 'speakflow_local_dashboard_v2';
+const CUSTOM_TOPICS_KEY = 'speakflow_custom_topics_v1';
+
+const readCustomTopics = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CUSTOM_TOPICS_KEY));
+    return Array.isArray(saved)
+      ? saved.filter((topic) => topic?.id && topic?.label && Array.isArray(topic.questions))
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+const mergeTopics = (remoteTopics = [], customTopics = readCustomTopics()) => {
+  const defaultsById = new Map(DEFAULT_TOPICS.map((topic) => [topic.id, topic]));
+  const enrichedRemote = remoteTopics.map((topic) => ({
+    ...defaultsById.get(topic.id),
+    ...topic,
+    questions: topic.questions?.length
+      ? topic.questions
+      : defaultsById.get(topic.id)?.questions || [topic.prompt].filter(Boolean),
+  }));
+  const builtIn = enrichedRemote.length ? enrichedRemote : DEFAULT_TOPICS;
+  const ids = new Set(builtIn.map((topic) => topic.id));
+  return [...builtIn, ...customTopics.filter((topic) => !ids.has(topic.id))];
+};
+
+const createCustomTopic = (label) => {
+  const cleanLabel = label.trim().replace(/\s+/g, ' ').slice(0, 60);
+  const slug = cleanLabel.toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 36) || 'practice';
+
+  return {
+    id: `custom-${slug}-${Date.now().toString(36)}`,
+    label: cleanLabel,
+    description: `Personal practice for ${cleanLabel}.`,
+    prompt: `Let's practise ${cleanLabel}. Explain the situation and what you want to achieve.`,
+    questions: [
+      `How would you start a conversation about ${cleanLabel}?`,
+      `What is the most important point to explain about ${cleanLabel}?`,
+      `What questions might the other person ask about ${cleanLabel}?`,
+      `How would you politely handle a disagreement during ${cleanLabel}?`,
+    ],
+    starters: ['I would like to discuss...', 'The main point is...', 'To make sure we are aligned...'],
+    accent: 'green',
+    isCustom: true,
+  };
+};
 
 const speakText = (text) => {
   if (!text || !('speechSynthesis' in window)) return;
@@ -82,8 +132,9 @@ function App() {
   const [message, setMessage] = useState('');
   const [level, setLevel] = useState('Beginner');
   const [topicId, setTopicId] = useState('daily');
-  const [topics, setTopics] = useState(DEFAULT_TOPICS);
+  const [topics, setTopics] = useState(() => mergeTopics());
   const [sentenceSuggestions, setSentenceSuggestions] = useState(DEFAULT_TOPICS[0].starters);
+  const [practiceQuestion, setPracticeQuestion] = useState(DEFAULT_TOPICS[0].questions[0]);
   const [wordSuggestions, setWordSuggestions] = useState([]);
   const [sessionId, setSessionId] = useState(null);
   const [interactionId, setInteractionId] = useState(null);
@@ -152,9 +203,9 @@ function App() {
   const loadTopics = useCallback(async () => {
     try {
       const data = await tutorApi.getTopics();
-      if (data.topics?.length) setTopics(data.topics);
+      setTopics(mergeTopics(data.topics || []));
     } catch {
-      setTopics(DEFAULT_TOPICS);
+      setTopics(mergeTopics());
     }
   }, []);
 
@@ -179,6 +230,11 @@ function App() {
 
   useEffect(() => {
     setSentenceSuggestions(selectedTopic.starters || []);
+    setPracticeQuestion((current) => (
+      selectedTopic.questions?.includes(current)
+        ? current
+        : selectedTopic.questions?.[0] || selectedTopic.prompt
+    ));
   }, [selectedTopic]);
 
   useEffect(() => {
@@ -249,6 +305,8 @@ function App() {
         message: cleanMessage,
         level,
         topic: topicId,
+        topicLabel: selectedTopic.label,
+        practiceQuestion,
         sessionId,
         interactionId,
         inputMode: speech.lastInputMode,
@@ -304,8 +362,10 @@ function App() {
     }
   };
 
-  const startTopic = (newTopicId) => {
-    const nextTopic = topics.find((item) => item.id === newTopicId)
+  const startTopic = (topicOrId) => {
+    const newTopicId = typeof topicOrId === 'string' ? topicOrId : topicOrId.id;
+    const nextTopic = (typeof topicOrId === 'object' ? topicOrId : null)
+      || topics.find((item) => item.id === newTopicId)
       || DEFAULT_TOPICS.find((item) => item.id === newTopicId)
       || DEFAULT_TOPICS[0];
     setTopicId(nextTopic.id);
@@ -314,12 +374,30 @@ function App() {
     setCurrentMetrics(null);
     setMessage('');
     setSentenceSuggestions(nextTopic.starters || []);
+    setPracticeQuestion(nextTopic.questions?.[0] || nextTopic.prompt);
     setMessages([{
       role: 'assistant',
       reply: `Great choice. Let’s practise ${nextTopic.label.toLowerCase()}. ${nextTopic.prompt}`,
       correction: null,
     }]);
     setMobileMenuOpen(false);
+  };
+
+  const addCustomTopic = (label) => {
+    const cleanLabel = label.trim().replace(/\s+/g, ' ');
+    if (cleanLabel.length < 3) return;
+
+    const existing = topics.find((topic) => topic.label.toLowerCase() === cleanLabel.toLowerCase());
+    if (existing) {
+      startTopic(existing.id);
+      return;
+    }
+
+    const customTopic = createCustomTopic(cleanLabel);
+    const customTopics = [...readCustomTopics(), customTopic];
+    localStorage.setItem(CUSTOM_TOPICS_KEY, JSON.stringify(customTopics));
+    setTopics((current) => [...current, customTopic]);
+    startTopic(customTopic);
   };
 
   const startNewChat = () => {
@@ -420,6 +498,7 @@ function App() {
             historyError={historyError}
             onLevelChange={setLevel}
             onTopicChange={startTopic}
+            onAddTopic={addCustomTopic}
             onOpenSession={openSession}
             onNewChat={startNewChat}
           />
@@ -471,6 +550,7 @@ function App() {
             message={message}
             wordSuggestions={wordSuggestions}
             sentenceSuggestions={sentenceSuggestions}
+            practiceQuestion={practiceQuestion}
             autoSpeak={autoSpeak}
             speech={speechControls}
             dashboard={dashboard}
@@ -479,8 +559,10 @@ function App() {
             onSend={sendMessage}
             onWordSuggestion={handleWordSuggestion}
             onSentenceSuggestion={handleSentenceSuggestion}
+            onQuestionChange={setPracticeQuestion}
             onToggleSpeak={() => setAutoSpeak((value) => !value)}
             onTopicChange={startTopic}
+            onAddTopic={addCustomTopic}
             onLevelChange={setLevel}
             onStartRecommended={startTopic}
             endRef={endRef}

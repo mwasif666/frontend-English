@@ -1,8 +1,8 @@
+import { useRef } from 'react';
 import {
   BarChart3,
   BookOpen,
   CheckCircle2,
-  Languages,
   Lightbulb,
   LoaderCircle,
   Mic,
@@ -93,41 +93,59 @@ function MessageBubble({ message, onSpeak }) {
   );
 }
 
-function WelcomeState({ topic, sentenceSuggestions, onSentenceSuggestion, onOpenTopics, onOpenProgress }) {
+function WelcomeState({
+  topic,
+  activeQuestion,
+  sentenceSuggestions,
+  onQuestionChange,
+  onSentenceSuggestion,
+  onOpenTopics,
+  onOpenProgress,
+}) {
   const starters = (sentenceSuggestions || topic.starters || []).slice(0, 3);
+  const questions = (topic.questions?.length ? topic.questions : [topic.prompt]).filter(Boolean).slice(0, 4);
+  const selectedQuestion = activeQuestion || questions[0];
 
   return (
     <div className="chat-welcome view-enter">
       <div className="welcome-ai-mark"><Sparkles size={24} /></div>
       <span className="welcome-status"><i /> English coach online</span>
-      <h1>How would you like to practise today?</h1>
-      <p>Choose a starter, speak naturally, and get instant corrections with a clear progress score.</p>
+      <h1>Let&apos;s practise {topic.label.toLowerCase()}</h1>
+      <p>{topic.description} Choose a question, answer naturally, and get instant corrections.</p>
 
-      <div className="welcome-feature-grid">
-        <button type="button" onClick={() => onSentenceSuggestion(starters[0] || topic.prompt)}>
-          <span><Languages size={19} /></span>
-          <strong>Guided conversation</strong>
-          <small>Start with a natural sentence prompt</small>
-        </button>
-        <button type="button" onClick={onOpenTopics}>
-          <span><BookOpen size={19} /></span>
-          <strong>Choose a topic</strong>
-          <small>Travel, work, business and daily English</small>
-        </button>
-        <button type="button" onClick={onOpenProgress}>
-          <span><BarChart3 size={19} /></span>
-          <strong>Review progress</strong>
-          <small>See grammar, fluency and vocabulary trends</small>
-        </button>
+      <div className="practice-question-panel">
+        <div className="practice-question-heading">
+          <span>Recommended questions</span>
+          <small>{questions.length} prompts</small>
+        </div>
+        <strong>{selectedQuestion}</strong>
+        <div className="practice-question-options">
+          {questions.map((question, index) => (
+            <button
+              type="button"
+              key={question}
+              className={selectedQuestion === question ? 'active' : ''}
+              onClick={() => onQuestionChange(question)}
+              title={question}
+            >
+              {index + 1}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="welcome-starters">
-        <span>Quick starters</span>
+        <span>Helpful answer starters</span>
         <div>
           {starters.map((starter) => (
             <button type="button" key={starter} onClick={() => onSentenceSuggestion(starter)}>{starter}</button>
           ))}
         </div>
+      </div>
+
+      <div className="welcome-shortcuts">
+        <button type="button" onClick={onOpenTopics}><BookOpen size={14} /> Choose another topic</button>
+        <button type="button" onClick={onOpenProgress}><BarChart3 size={14} /> Review progress</button>
       </div>
     </div>
   );
@@ -141,18 +159,25 @@ export default function ChatPanel({
   message,
   wordSuggestions,
   sentenceSuggestions,
+  practiceQuestion,
   autoSpeak,
   speech,
   onMessageChange,
   onSend,
   onWordSuggestion,
   onSentenceSuggestion,
+  onQuestionChange,
   onToggleSpeak,
   onOpenTopics,
   onOpenProgress,
   endRef,
 }) {
   const hasConversation = messages.some((item) => item.role === 'user');
+  const composerRef = useRef(null);
+  const selectQuestion = (question) => {
+    onQuestionChange(question);
+    window.requestAnimationFrame(() => composerRef.current?.focus());
+  };
 
   return (
     <section className="chat-studio">
@@ -172,7 +197,9 @@ export default function ChatPanel({
         {!hasConversation ? (
           <WelcomeState
             topic={topic}
+            activeQuestion={practiceQuestion}
             sentenceSuggestions={sentenceSuggestions}
+            onQuestionChange={selectQuestion}
             onSentenceSuggestion={onSentenceSuggestion}
             onOpenTopics={onOpenTopics}
             onOpenProgress={onOpenProgress}
@@ -202,6 +229,13 @@ export default function ChatPanel({
         {speech.error && <div className="composer-alert">{speech.error}</div>}
         {!speech.supported && <div className="composer-alert">Voice recognition is unavailable here. You can still type.</div>}
 
+        {practiceQuestion && !hasConversation && (
+          <div className="composer-question">
+            <span>Answering</span>
+            <strong>{practiceQuestion}</strong>
+          </div>
+        )}
+
         {wordSuggestions.length > 0 && (
           <div className="word-suggestion-bar" aria-label="Word suggestions">
             <span>Suggested words</span>
@@ -218,6 +252,7 @@ export default function ChatPanel({
 
           <div className="composer-input">
             <textarea
+              ref={composerRef}
               value={message}
               onChange={(event) => onMessageChange(event.target.value)}
               onKeyDown={(event) => {
@@ -226,7 +261,7 @@ export default function ChatPanel({
                   onSend();
                 }
               }}
-              placeholder={speech.isListening ? 'Listening… speak naturally' : 'Type your answer or use the microphone…'}
+              placeholder={speech.isListening ? 'Listening... speak naturally' : 'Type or speak your answer...'}
               rows="1"
             />
             <VoiceBars active={speech.isListening} />
