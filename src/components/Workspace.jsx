@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   BarChart3,
+  BookOpen,
   Bookmark,
   Check,
   Languages,
@@ -11,10 +12,12 @@ import {
 } from 'lucide-react';
 import ChatPanel from './ChatPanel';
 import DashboardPanel from './DashboardPanel';
+import DictionaryPanel from './DictionaryPanel';
 
 const TABS = [
   { id: 'chat', label: 'Conversation', icon: MessageSquare },
   { id: 'topics', label: 'Practice topics', icon: Languages },
+  { id: 'dictionary', label: 'Dictionary', icon: BookOpen },
   { id: 'progress', label: 'Progress', icon: BarChart3 },
 ];
 
@@ -128,6 +131,7 @@ export default function Workspace({
   speech,
   dashboard,
   currentMetrics,
+  user,
   onMessageChange,
   onSend,
   onWordSuggestion,
@@ -139,6 +143,7 @@ export default function Workspace({
   onAddTopic,
   onLevelChange,
   onStartRecommended,
+  onRequireAuth,
   endRef,
 }) {
   const [activeTab, setActiveTab] = useState('chat');
@@ -225,6 +230,10 @@ export default function Workspace({
               }}
             />
           </div>
+        )}
+
+        {activeTab === 'dictionary' && (
+          <DictionaryPanel user={user} onRequireAuth={onRequireAuth} />
         )}
       </div>
     </div>

@@ -662,6 +662,7 @@ function App() {
             speech={speechControls}
             dashboard={dashboard}
             currentMetrics={currentMetrics}
+            user={user}
             onMessageChange={handleMessageChange}
             onSend={sendMessage}
             onWordSuggestion={handleWordSuggestion}
@@ -673,6 +674,11 @@ function App() {
             onAddTopic={addCustomTopic}
             onLevelChange={setLevel}
             onStartRecommended={startTopic}
+            onRequireAuth={() => {
+              setAuthMode('login');
+              setAuthError('');
+              setAuthOpen(true);
+            }}
             endRef={endRef}
           />
         </section>

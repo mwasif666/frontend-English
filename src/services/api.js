@@ -82,3 +82,21 @@ export const authApi = {
   }),
   me: () => request('/auth/me'),
 };
+
+export const dictionaryApi = {
+  lookup: (term) => request('/dictionary/lookup', {
+    method: 'POST',
+    body: JSON.stringify({ term }),
+  }),
+  getOverview: () => request('/dictionary/overview'),
+  createProject: (name) => request('/dictionary/projects', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  }),
+  saveWord: (projectId, entry) => request('/dictionary/words', {
+    method: 'POST',
+    body: JSON.stringify({ projectId, entry }),
+  }),
+  getProjectWords: (projectId) => request(`/dictionary/projects/${projectId}/words`),
+  deleteWord: (wordId) => request(`/dictionary/words/${wordId}`, { method: 'DELETE' }),
+};
