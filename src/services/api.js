@@ -84,6 +84,7 @@ export const authApi = {
 };
 
 export const dictionaryApi = {
+  getSuggestions: (query) => request(`/dictionary/suggestions${params({ q: query })}`),
   lookup: (term) => request('/dictionary/lookup', {
     method: 'POST',
     body: JSON.stringify({ term }),

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   BookmarkPlus,
@@ -132,6 +132,14 @@ export default function DictionaryPanel({ user, onRequireAuth }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [activityVersion, setActivityVersion] = useState(0);
+  const suggestionRequestRef = useRef(0);
+  const lookupRequestRef = useRef(0);
+  const lastLookedUpRef = useRef('');
+  const lastPointerActivityRef = useRef(0);
 
   const loadOverview = useCallback(async () => {
     if (!user) return;
@@ -161,28 +169,87 @@ export default function DictionaryPanel({ user, onRequireAuth }) {
     }
   }, [loadOverview, user]);
 
-  const searchWord = async (event) => {
-    event.preventDefault();
+  const performLookup = useCallback(async (termValue) => {
     if (!user) {
       onRequireAuth();
       return;
     }
-    const term = query.trim();
-    if (!term || loading) return;
+    const term = termValue.trim();
+    if (!term) return;
+    const requestId = lookupRequestRef.current + 1;
+    lookupRequestRef.current = requestId;
+    lastLookedUpRef.current = term.toLocaleLowerCase();
     setLoading(true);
     setError('');
     setNotice('');
+    setSuggestionsOpen(false);
     try {
       const data = await dictionaryApi.lookup(term);
+      if (lookupRequestRef.current !== requestId) return;
       setEntry(data.entry);
       setExistingMatches(data.existingMatches || []);
       setRelatedSaved(data.relatedSaved || []);
       await loadOverview();
     } catch (requestError) {
+      if (lookupRequestRef.current !== requestId) return;
       setError(requestError.message);
     } finally {
-      setLoading(false);
+      if (lookupRequestRef.current === requestId) setLoading(false);
     }
+  }, [loadOverview, onRequireAuth, user]);
+
+  const searchWord = (event) => {
+    event.preventDefault();
+    performLookup(query);
+  };
+
+  useEffect(() => {
+    const term = query.trim();
+    if (!user || section !== 'lookup' || !term) {
+      setSuggestions([]);
+      setSuggestionsLoading(false);
+      setSuggestionsOpen(false);
+      return undefined;
+    }
+
+    setSuggestionsOpen(true);
+    const suggestionTimer = window.setTimeout(async () => {
+      const requestId = suggestionRequestRef.current + 1;
+      suggestionRequestRef.current = requestId;
+      setSuggestionsLoading(true);
+      try {
+        const data = await dictionaryApi.getSuggestions(term);
+        if (suggestionRequestRef.current === requestId) {
+          setSuggestions(data.suggestions || []);
+        }
+      } catch {
+        if (suggestionRequestRef.current === requestId) setSuggestions([]);
+      } finally {
+        if (suggestionRequestRef.current === requestId) setSuggestionsLoading(false);
+      }
+    }, 250);
+
+    const autoSearchTimer = window.setTimeout(() => {
+      if (lastLookedUpRef.current !== term.toLocaleLowerCase()) performLookup(term);
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(suggestionTimer);
+      window.clearTimeout(autoSearchTimer);
+    };
+  }, [activityVersion, performLookup, query, section, user]);
+
+  const registerPointerActivity = () => {
+    const now = Date.now();
+    if (now - lastPointerActivityRef.current < 400) return;
+    lastPointerActivityRef.current = now;
+    setActivityVersion((current) => current + 1);
+  };
+
+  const chooseSuggestion = (suggestion) => {
+    setQuery(suggestion.term);
+    setSuggestionsOpen(false);
+    performLookup(suggestion.term);
   };
 
   const saveEntry = async (projectId = selectedProjectId) => {
@@ -301,20 +368,78 @@ export default function DictionaryPanel({ user, onRequireAuth }) {
           {section === 'lookup' && (
             <div className="dictionary-lookup-layout">
               <section>
-                <form className="dictionary-search" onSubmit={searchWord}>
-                  <Search size={20} />
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Type an English word, phrase, movie title..."
-                    aria-label="Search English to Urdu dictionary"
-                    maxLength="80"
-                  />
-                  <button type="submit" disabled={loading || !query.trim()}>
-                    {loading ? <LoaderCircle className="spin" size={17} /> : <Search size={17} />}
-                    Search
-                  </button>
-                </form>
+                <div
+                  className="dictionary-search-shell"
+                  onPointerMove={registerPointerActivity}
+                  onKeyDown={() => setActivityVersion((current) => current + 1)}
+                >
+                  <form className="dictionary-search" onSubmit={searchWord}>
+                    <Search size={20} />
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      onFocus={() => query.trim() && setSuggestionsOpen(true)}
+                      onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 180)}
+                      placeholder="Type an English word, phrase, movie title..."
+                      aria-label="Search English to Urdu dictionary"
+                      aria-autocomplete="list"
+                      aria-expanded={suggestionsOpen}
+                      maxLength="80"
+                    />
+                    <button type="submit" disabled={loading || !query.trim()}>
+                      {loading ? <LoaderCircle className="spin" size={17} /> : <Search size={17} />}
+                      Search now
+                    </button>
+                  </form>
+
+                  {suggestionsOpen && query.trim() && (
+                    <div className="dictionary-suggestion-menu" role="listbox">
+                      <button
+                        type="button"
+                        className="dictionary-current-query"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => performLookup(query)}
+                      >
+                        <span><Search size={14} /></span>
+                        <div>
+                          <strong>{query.trim()}</strong>
+                          <small>Full meaning will open automatically after 2 seconds</small>
+                        </div>
+                      </button>
+
+                      {suggestions.map((suggestion) => (
+                        <button
+                          type="button"
+                          key={`${suggestion.term}-${suggestion.projectId || suggestion.source}`}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => chooseSuggestion(suggestion)}
+                          role="option"
+                        >
+                          <span className="dictionary-suggestion-word">
+                            <strong>{suggestion.term}</strong>
+                            <small>{suggestion.partOfSpeech || 'word'}</small>
+                          </span>
+                          <span className="dictionary-suggestion-meaning">
+                            <strong dir="rtl" lang="ur">{suggestion.urdu}</strong>
+                            <small>{suggestion.romanUrdu}</small>
+                            {suggestion.projectName && <i><Folder size={11} /> {suggestion.projectName}</i>}
+                          </span>
+                        </button>
+                      ))}
+
+                      {suggestionsLoading && (
+                        <div className="dictionary-suggestion-loading">
+                          <LoaderCircle className="spin" size={14} /> Finding matching words…
+                        </div>
+                      )}
+                      {!suggestionsLoading && suggestions.length === 0 && (
+                        <div className="dictionary-suggestion-loading">
+                          Keep typing or pause for the complete meaning.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {!entry && !loading && (
                   <div className="dictionary-welcome-card">
