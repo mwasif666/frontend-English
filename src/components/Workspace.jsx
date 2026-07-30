@@ -132,6 +132,9 @@ export default function Workspace({
   dashboard,
   currentMetrics,
   user,
+  realtimeStatus,
+  liveChatStatus,
+  streamingReply,
   onMessageChange,
   onSend,
   onWordSuggestion,
@@ -194,6 +197,9 @@ export default function Workspace({
             practiceLoading={practiceLoading}
             autoSpeak={autoSpeak}
             speech={speech}
+            realtimeStatus={realtimeStatus}
+            liveChatStatus={liveChatStatus}
+            streamingReply={streamingReply}
             onMessageChange={onMessageChange}
             onSend={onSend}
             onWordSuggestion={onWordSuggestion}
@@ -233,7 +239,11 @@ export default function Workspace({
         )}
 
         {activeTab === 'dictionary' && (
-          <DictionaryPanel user={user} onRequireAuth={onRequireAuth} />
+          <DictionaryPanel
+            user={user}
+            realtimeStatus={realtimeStatus}
+            onRequireAuth={onRequireAuth}
+          />
         )}
       </div>
     </div>

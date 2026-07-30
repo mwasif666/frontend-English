@@ -15,6 +15,15 @@ import {
   Trash2,
 } from 'lucide-react';
 import { dictionaryApi } from '../services/api';
+import { realtimeClient } from '../services/realtime';
+
+const suggestionCache = new Map();
+const lookupCache = new Map();
+const CLIENT_CACHE_MS = 30 * 60 * 1000;
+const setClientCache = (cache, key, value) => {
+  if (cache.size >= 500 && !cache.has(key)) cache.delete(cache.keys().next().value);
+  cache.set(key, { ...value, createdAt: Date.now() });
+};
 
 const EMPTY_OVERVIEW = {
   stats: { totalSearches: 0, uniqueWords: 0, savedWords: 0, projects: 0 },
@@ -115,7 +124,7 @@ function DictionaryDashboard({ overview }) {
   );
 }
 
-export default function DictionaryPanel({ user, onRequireAuth }) {
+export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth }) {
   const [section, setSection] = useState('lookup');
   const [query, setQuery] = useState('');
   const [entry, setEntry] = useState(null);
@@ -135,9 +144,12 @@ export default function DictionaryPanel({ user, onRequireAuth }) {
   const [suggestions, setSuggestions] = useState([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [lookupStage, setLookupStage] = useState('');
   const [activityVersion, setActivityVersion] = useState(0);
   const suggestionRequestRef = useRef(0);
   const lookupRequestRef = useRef(0);
+  const suggestionSocketRequestRef = useRef(null);
+  const lookupSocketRequestRef = useRef(null);
   const lastLookedUpRef = useRef('');
   const lastPointerActivityRef = useRef(0);
 
@@ -178,25 +190,71 @@ export default function DictionaryPanel({ user, onRequireAuth }) {
     if (!term) return;
     const requestId = lookupRequestRef.current + 1;
     lookupRequestRef.current = requestId;
+    lookupSocketRequestRef.current?.cancel();
+    const lookupCacheKey = `${user.id}:${term.toLocaleLowerCase()}`;
+    const cachedLookup = lookupCache.get(lookupCacheKey);
+    const freshCachedLookup = cachedLookup
+      && Date.now() - cachedLookup.createdAt < CLIENT_CACHE_MS;
     lastLookedUpRef.current = term.toLocaleLowerCase();
     setLoading(true);
+    setLookupStage(freshCachedLookup ? 'Refreshing cached meaning…' : 'Checking your saved words…');
+    setEntry(freshCachedLookup ? cachedLookup.entry : null);
     setError('');
     setNotice('');
     setSuggestionsOpen(false);
     try {
-      const data = await dictionaryApi.lookup(term);
+      let data;
+      if (realtimeStatus === 'ready') {
+        const liveRequest = realtimeClient.request('dictionary:lookup', { term }, {
+          onEvent: (event) => {
+            if (lookupRequestRef.current !== requestId) return;
+            if (event.type === 'dictionary:lookup:status') {
+              const labels = {
+                'checking-saved': 'Checking your saved words…',
+                'found-saved': 'Loading your saved meaning…',
+                translating: 'Translating to Urdu and Roman Urdu…',
+                recording: 'Updating your dictionary dashboard…',
+              };
+              setLookupStage(labels[event.payload?.stage] || 'Finding the meaning…');
+            }
+            if (event.type === 'dictionary:lookup:chunk') {
+              setEntry((current) => ({ ...(current || {}), ...(event.payload?.fields || {}) }));
+            }
+          },
+        });
+        lookupSocketRequestRef.current = liveRequest;
+        data = liveRequest.requestId ? await liveRequest.promise : await dictionaryApi.lookup(term);
+      } else {
+        setLookupStage('Using secure HTTP fallback…');
+        data = await dictionaryApi.lookup(term);
+      }
       if (lookupRequestRef.current !== requestId) return;
       setEntry(data.entry);
+      setClientCache(lookupCache, lookupCacheKey, { entry: data.entry });
       setExistingMatches(data.existingMatches || []);
       setRelatedSaved(data.relatedSaved || []);
       await loadOverview();
     } catch (requestError) {
       if (lookupRequestRef.current !== requestId) return;
-      setError(requestError.message);
+      try {
+        setLookupStage('Realtime interrupted — finishing over HTTP…');
+        const data = await dictionaryApi.lookup(term);
+        if (lookupRequestRef.current !== requestId) return;
+        setEntry(data.entry);
+        setClientCache(lookupCache, lookupCacheKey, { entry: data.entry });
+        setExistingMatches(data.existingMatches || []);
+        setRelatedSaved(data.relatedSaved || []);
+        await loadOverview();
+      } catch (fallbackError) {
+        if (lookupRequestRef.current === requestId) setError(fallbackError.message || requestError.message);
+      }
     } finally {
-      if (lookupRequestRef.current === requestId) setLoading(false);
+      if (lookupRequestRef.current === requestId) {
+        setLoading(false);
+        setLookupStage('');
+      }
     }
-  }, [loadOverview, onRequireAuth, user]);
+  }, [loadOverview, onRequireAuth, realtimeStatus, user]);
 
   const searchWord = (event) => {
     event.preventDefault();
@@ -205,6 +263,9 @@ export default function DictionaryPanel({ user, onRequireAuth }) {
 
   useEffect(() => {
     const term = query.trim();
+    const requestId = suggestionRequestRef.current + 1;
+    suggestionRequestRef.current = requestId;
+    suggestionSocketRequestRef.current?.cancel();
     if (!user || section !== 'lookup' || !term) {
       setSuggestions([]);
       setSuggestionsLoading(false);
@@ -213,30 +274,58 @@ export default function DictionaryPanel({ user, onRequireAuth }) {
     }
 
     setSuggestionsOpen(true);
+    const normalizedTerm = term.toLocaleLowerCase();
+    const cacheKey = `${user.id}:${normalizedTerm}`;
+    const cached = suggestionCache.get(cacheKey);
+    if (cached && Date.now() - cached.createdAt < CLIENT_CACHE_MS) {
+      setSuggestions(cached.suggestions);
+      setSuggestionsLoading(false);
+    }
     const suggestionTimer = window.setTimeout(async () => {
-      const requestId = suggestionRequestRef.current + 1;
-      suggestionRequestRef.current = requestId;
       setSuggestionsLoading(true);
       try {
-        const data = await dictionaryApi.getSuggestions(term);
-        if (suggestionRequestRef.current === requestId) {
-          setSuggestions(data.suggestions || []);
+        let data;
+        if (realtimeStatus === 'ready') {
+          const liveRequest = realtimeClient.request('dictionary:suggest', { prefix: term });
+          suggestionSocketRequestRef.current = liveRequest;
+          data = liveRequest.requestId ? await liveRequest.promise : await dictionaryApi.getSuggestions(term);
+        } else {
+          data = await dictionaryApi.getSuggestions(term);
         }
-      } catch {
-        if (suggestionRequestRef.current === requestId) setSuggestions([]);
+        if (suggestionRequestRef.current === requestId) {
+          const nextSuggestions = data.suggestions || [];
+          setClientCache(suggestionCache, cacheKey, { suggestions: nextSuggestions });
+          setSuggestions(nextSuggestions);
+        }
+      } catch (requestError) {
+        if (requestError?.name === 'AbortError') return;
+        if (suggestionRequestRef.current !== requestId) return;
+        try {
+          const data = await dictionaryApi.getSuggestions(term);
+          const nextSuggestions = data.suggestions || [];
+          setClientCache(suggestionCache, cacheKey, { suggestions: nextSuggestions });
+          setSuggestions(nextSuggestions);
+        } catch {
+          setSuggestions(cached?.suggestions || []);
+        }
       } finally {
         if (suggestionRequestRef.current === requestId) setSuggestionsLoading(false);
       }
     }, 250);
 
+    return () => {
+      suggestionSocketRequestRef.current?.cancel();
+      window.clearTimeout(suggestionTimer);
+    };
+  }, [query, realtimeStatus, section, user]);
+
+  useEffect(() => {
+    const term = query.trim();
+    if (!user || section !== 'lookup' || !term) return undefined;
     const autoSearchTimer = window.setTimeout(() => {
       if (lastLookedUpRef.current !== term.toLocaleLowerCase()) performLookup(term);
     }, 2000);
-
-    return () => {
-      window.clearTimeout(suggestionTimer);
-      window.clearTimeout(autoSearchTimer);
-    };
+    return () => window.clearTimeout(autoSearchTimer);
   }, [activityVersion, performLookup, query, section, user]);
 
   const registerPointerActivity = () => {
@@ -312,6 +401,19 @@ export default function DictionaryPanel({ user, onRequireAuth }) {
     }
   };
 
+  useEffect(() => realtimeClient.subscribeEvents((event) => {
+    if (!user || !event?.type?.startsWith('dictionary:')) return;
+    loadOverview();
+    if (
+      activeProject?.id
+      && ['dictionary:word-saved', 'dictionary:word-deleted'].includes(event.type)
+    ) {
+      dictionaryApi.getProjectWords(activeProject.id)
+        .then((data) => setProjectWords(data.words || []))
+        .catch(() => {});
+    }
+  }), [activeProject?.id, loadOverview, user]);
+
   const deleteWord = async (wordId) => {
     const word = projectWords.find((item) => item.id === wordId);
     if (!window.confirm(`Remove “${word?.term || 'this word'}” from ${activeProject?.name || 'this project'}?`)) return;
@@ -337,7 +439,12 @@ export default function DictionaryPanel({ user, onRequireAuth }) {
           <h2>English to Urdu dictionary</h2>
           <p>Understand words in Urdu and Roman Urdu, then organise useful vocabulary into private projects.</p>
         </div>
-        {user && <span className="dictionary-owner"><i /> {user.name}&apos;s private dictionary</span>}
+        {user && (
+          <span className={`dictionary-owner ${realtimeStatus === 'ready' ? 'realtime' : ''}`}>
+            <i /> {user.name}&apos;s private dictionary ·
+            {' '}{realtimeStatus === 'ready' ? 'live sync' : 'HTTP fallback'}
+          </span>
+        )}
       </div>
 
       <nav className="dictionary-subnav" aria-label="Dictionary sections">
@@ -364,6 +471,7 @@ export default function DictionaryPanel({ user, onRequireAuth }) {
               {error || notice}
             </div>
           )}
+          {lookupStage && <div className="dictionary-feedback">{lookupStage}</div>}
 
           {section === 'lookup' && (
             <div className="dictionary-lookup-layout">
@@ -533,7 +641,7 @@ export default function DictionaryPanel({ user, onRequireAuth }) {
                     <button
                       type="button"
                       className="dictionary-primary-button full"
-                      disabled={!entry || saving}
+                      disabled={!entry?.romanUrdu || loading || saving}
                       onClick={() => saveEntry()}
                     >
                       {saving ? <LoaderCircle className="spin" size={15} /> : <Plus size={15} />}

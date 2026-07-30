@@ -199,6 +199,9 @@ export default function ChatPanel({
   practiceLoading,
   autoSpeak,
   speech,
+  realtimeStatus,
+  liveChatStatus,
+  streamingReply,
   onMessageChange,
   onSend,
   onWordSuggestion,
@@ -300,9 +303,9 @@ export default function ChatPanel({
               <span className="assistant-avatar"><Sparkles size={15} /></span>
               <span>SpeakFlow</span>
             </div>
-            <div className="bubble assistant-bubble typing-bubble">
-              <span /><span /><span />
-              <small>Analysing your English…</small>
+            <div className={`bubble assistant-bubble typing-bubble ${streamingReply ? 'streaming' : ''}`}>
+              {streamingReply ? <p>{streamingReply}</p> : <><span /><span /><span /></>}
+              <small>{liveChatStatus || 'Analysing your English…'}</small>
             </div>
           </div>
         )}
@@ -410,7 +413,10 @@ export default function ChatPanel({
             {loading ? <LoaderCircle className="spin" size={19} /> : <Send size={19} />}
           </button>
         </div>
-        <p className="composer-hint">Enter to send · Shift + Enter for a new line · suggestions update while you type</p>
+        <p className="composer-hint">
+          Enter to send · Shift + Enter for a new line · suggestions update while you type ·
+          {' '}{realtimeStatus === 'ready' ? 'Realtime connected' : 'HTTP fallback active'}
+        </p>
       </footer>
     </section>
   );

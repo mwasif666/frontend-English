@@ -1,4 +1,4 @@
-const API_URL = (import.meta.env.VITE_API_URL || 'https://english-tutorial-1ejj.vercel.app/api').replace(/\/+$/, '');
+export const API_URL = (import.meta.env?.VITE_API_URL || 'https://english-tutorial-1ejj.vercel.app/api').replace(/\/+$/, '');
 
 const getGuestId = () => {
   const storageKey = 'speakflow_guest_id';

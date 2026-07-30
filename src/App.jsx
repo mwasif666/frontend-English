@@ -13,6 +13,7 @@ import PracticeSidebar from './components/PracticeSidebar';
 import Workspace from './components/Workspace';
 import { EMPTY_DASHBOARD, DEFAULT_TOPICS, WELCOME_MESSAGE } from './data/defaults';
 import { authApi, tutorApi } from './services/api';
+import { realtimeClient } from './services/realtime';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import { mergeTranscripts } from './utils/transcript';
 
@@ -124,6 +125,20 @@ const applyLocalMetrics = (dashboard, metrics) => {
 
 const cleanStarter = (value = '') => value.replace(/…/g, '').trim();
 
+const restoreSessionMessages = (savedMessages = []) => savedMessages.map((item) => (
+  item.role === 'user'
+    ? { role: 'user', text: item.text, metrics: item.metrics }
+    : {
+        role: 'assistant',
+        reply: item.text,
+        correction: item.correction,
+        replyMeaning: item.replyMeaning,
+        meaning: item.meaning,
+        vocabulary: item.vocabulary,
+        encouragement: item.encouragement,
+      }
+));
+
 function App() {
   const [messages, setMessages] = useState([WELCOME_MESSAGE]);
   const [message, setMessage] = useState('');
@@ -153,6 +168,9 @@ function App() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [realtimeStatus, setRealtimeStatus] = useState('offline');
+  const [liveChatStatus, setLiveChatStatus] = useState('');
+  const [streamingReply, setStreamingReply] = useState('');
   const endRef = useRef(null);
   const suggestionRequest = useRef(0);
   const writingRequest = useRef(0);
@@ -231,6 +249,24 @@ function App() {
     };
     initialise();
   }, [loadWorkspace]);
+
+  useEffect(() => realtimeClient.subscribeStatus(setRealtimeStatus), []);
+
+  useEffect(() => {
+    const token = localStorage.getItem('speakflow_token');
+    if (user && token) realtimeClient.connect(token);
+    else realtimeClient.disconnect();
+  }, [user]);
+
+  useEffect(() => realtimeClient.subscribeEvents((event) => {
+    if (!user || event?.type !== 'chat:changed') return;
+    Promise.all([loadSessions(), loadDashboard()]);
+    if (sessionId && String(event.sessionId) === String(sessionId)) {
+      tutorApi.getSession(sessionId)
+        .then((data) => setMessages(restoreSessionMessages(data.session?.messages)))
+        .catch(() => {});
+    }
+  }), [loadDashboard, loadSessions, sessionId, user]);
 
   useEffect(() => {
     setSentenceSuggestions(selectedTopic.starters || []);
@@ -381,9 +417,13 @@ function App() {
     setGrammarSuggestion(null);
     setWordSuggestions([]);
     setLoading(true);
+    setLiveChatStatus('Connecting to your tutor…');
+    setStreamingReply('');
 
     try {
-      const data = await tutorApi.respond({
+      const tutorPayload = {
+        clientRequestId: globalThis.crypto?.randomUUID?.()
+          || `chat_${Date.now()}_${Math.random().toString(36).slice(2)}`,
         message: cleanMessage,
         level,
         topic: topicId,
@@ -393,7 +433,41 @@ function App() {
         interactionId,
         inputMode: speech.lastInputMode,
         speechConfidence: speech.lastConfidence,
-      });
+      };
+      let data;
+      if (user && realtimeStatus === 'ready') {
+        const liveRequest = realtimeClient.request('chat:respond', tutorPayload, {
+          onEvent: (event) => {
+            if (event.type === 'chat:status') {
+              const labels = {
+                understanding: 'Understanding your answer…',
+                coaching: 'Preparing helpful feedback…',
+                analysing: 'Checking grammar and fluency…',
+                saving: 'Saving your progress…',
+                complete: 'Reply ready',
+              };
+              setLiveChatStatus(labels[event.payload?.stage] || 'Working on your reply…');
+            }
+            if (event.type === 'chat:reply-chunk') {
+              setStreamingReply((current) => `${current}${event.payload?.text || ''}`);
+            }
+          },
+        });
+        if (liveRequest.requestId) {
+          try {
+            data = await liveRequest.promise;
+          } catch {
+            setLiveChatStatus('Realtime interrupted — finishing over HTTP…');
+            data = await tutorApi.respond(tutorPayload);
+          }
+        } else {
+          setLiveChatStatus('Using secure HTTP fallback…');
+          data = await tutorApi.respond(tutorPayload);
+        }
+      } else {
+        setLiveChatStatus('Using secure HTTP fallback…');
+        data = await tutorApi.respond(tutorPayload);
+      }
 
       setMessages((current) => {
         const updated = [...current];
@@ -403,7 +477,7 @@ function App() {
             break;
           }
         }
-        return [...updated, {
+        const nextAssistant = {
           role: 'assistant',
           reply: data.reply,
           correction: data.correction,
@@ -412,7 +486,12 @@ function App() {
           vocabulary: data.vocabulary,
           encouragement: data.encouragement,
           metrics: data.metrics,
-        }];
+        };
+        if (updated.at(-1)?.role === 'assistant' && updated.at(-1)?.reply === data.reply) {
+          updated[updated.length - 1] = nextAssistant;
+          return updated;
+        }
+        return [...updated, nextAssistant];
       });
 
       setCurrentMetrics(data.metrics || null);
@@ -441,6 +520,8 @@ function App() {
       }]);
     } finally {
       setLoading(false);
+      setLiveChatStatus('');
+      setStreamingReply('');
       speech.markTyped();
     }
   };
@@ -503,19 +584,7 @@ function App() {
     try {
       const data = await tutorApi.getSession(selectedSessionId);
       const savedSession = data.session;
-      const restoredMessages = savedSession.messages.map((item) => (
-        item.role === 'user'
-          ? { role: 'user', text: item.text, metrics: item.metrics }
-          : {
-              role: 'assistant',
-              reply: item.text,
-              correction: item.correction,
-              replyMeaning: item.replyMeaning,
-              meaning: item.meaning,
-              vocabulary: item.vocabulary,
-              encouragement: item.encouragement,
-            }
-      ));
+      const restoredMessages = restoreSessionMessages(savedSession.messages);
       const lastScored = [...savedSession.messages]
         .reverse()
         .find((item) => item.role === 'user' && item.metrics)?.metrics;
@@ -663,6 +732,9 @@ function App() {
             dashboard={dashboard}
             currentMetrics={currentMetrics}
             user={user}
+            realtimeStatus={realtimeStatus}
+            liveChatStatus={liveChatStatus}
+            streamingReply={streamingReply}
             onMessageChange={handleMessageChange}
             onSend={sendMessage}
             onWordSuggestion={handleWordSuggestion}
