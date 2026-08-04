@@ -444,6 +444,7 @@ button.settings-row:hover { border-color: var(--line-strong); background: rgba(2
 .practice-question-heading small { color: #96a098; font-size: 10.5px; }
 .practice-question-panel > strong { display: block; padding-right: 12px; color: #f5f8f5; font: 700 16px/1.45 'Manrope'; }
 .question-meaning { margin: 5px 0 0; color: #aeb8b0; font-size: 12px; line-height: 1.55; }
+.urdu-script { width: 100%; font-family: 'Noto Nastaliq Urdu', 'Noto Sans Arabic', serif; font-size: 14px !important; line-height: 1.9 !important; text-align: right; }
 .practice-question-options { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .practice-question-options button {
   width: 30px;
@@ -500,6 +501,9 @@ button.settings-row:hover { border-color: var(--line-strong); background: rgba(2
 .reply-meaning { margin-top: 7px; padding-left: 10px; border-left: 2px solid var(--green-line); }
 .reply-meaning span { color: var(--green); font-size: 9.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .reply-meaning p { margin: 3px 0 0; color: #aeb6b0; font-size: 12px; line-height: 1.55; }
+.reply-meaning .urdu-script,
+.meaning-card .urdu-script,
+.correction-card .urdu-script { margin-top: 7px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,.07); color: #d8ddd9; }
 .message-score { margin-top: 6px; color: #949c95; font-size: 10.5px; font-weight: 700; }
 .message-enter { animation: messageEnter .35s ease both; }
 @keyframes messageEnter { from { opacity: 0; transform: translateY(8px); } }
@@ -860,6 +864,7 @@ button.settings-row:hover { border-color: var(--line-strong); background: rgba(2
 .dictionary-match-card { margin-top: 10px; padding: 13px 15px; }
 .dictionary-match-card.subtle { background: #101411; }
 .dictionary-save-panel { position: sticky; top: 0; padding: 18px; }
+.dictionary-save-panel .dictionary-signin { min-height: 280px; }
 .dictionary-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dictionary-card-heading > div { display: flex; align-items: center; gap: 7px; color: var(--green); }
 .dictionary-card-heading strong { color: white; font-size: 12px; }

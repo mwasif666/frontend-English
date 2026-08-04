@@ -77,8 +77,9 @@ function MessageBubble({ message, onSpeak }) {
 
         {message.replyMeaning && (
           <div className="reply-meaning">
-            <span>Roman Urdu</span>
+            <span>Simple Roman Urdu</span>
             <p>{message.replyMeaning}</p>
+            {message.replyUrdu && <p className="urdu-script" dir="rtl" lang="ur">{message.replyUrdu}</p>}
           </div>
         )}
 
@@ -99,13 +100,17 @@ function MessageBubble({ message, onSpeak }) {
             <span className="original-sentence">You said: “{message.correction.original}”</span>
             <strong>“{message.correction.corrected}”</strong>
             <p>{message.correction.explanation}</p>
+            {message.correction.explanationUrdu && (
+              <p className="urdu-script" dir="rtl" lang="ur">{message.correction.explanationUrdu}</p>
+            )}
           </div>
         )}
 
         {message.meaning && (
           <div className="meaning-card">
-            <span>Roman Urdu meaning</span>
+            <span>Simple Roman Urdu meaning</span>
             <p>{message.meaning}</p>
+            {message.meaningUrdu && <p className="urdu-script" dir="rtl" lang="ur">{message.meaningUrdu}</p>}
           </div>
         )}
 
@@ -138,6 +143,7 @@ function WelcomeState({
   const selectedQuestion = activeQuestion || questions[0];
   const questionIndex = Math.max(0, questions.indexOf(selectedQuestion));
   const selectedMeaning = topic.questionMeanings?.[questionIndex];
+  const selectedUrduMeaning = topic.questionUrduMeanings?.[questionIndex];
 
   return (
     <div className="chat-welcome view-enter">
@@ -153,6 +159,7 @@ function WelcomeState({
         </div>
         <strong>{selectedQuestion}</strong>
         {selectedMeaning && <p className="question-meaning">{selectedMeaning}</p>}
+        {selectedUrduMeaning && <p className="question-meaning urdu-script" dir="rtl" lang="ur">{selectedUrduMeaning}</p>}
         <div className="practice-question-options">
           {questions.map((question, index) => (
             <button
@@ -219,6 +226,7 @@ export default function ChatPanel({
   const voiceNotice = buildVoiceNotice(speech);
   const questionIndex = Math.max(0, (topic.questions || []).indexOf(practiceQuestion));
   const practiceQuestionMeaning = topic.questionMeanings?.[questionIndex];
+  const practiceQuestionUrduMeaning = topic.questionUrduMeanings?.[questionIndex];
   const inlineSuggestion = useMemo(() => {
     if (!message || /\s$/.test(message) || !wordSuggestions.length) return null;
     const currentWord = message.trimEnd().split(/\s+/).at(-1) || '';
@@ -331,6 +339,7 @@ export default function ChatPanel({
             <div>
               <strong>{practiceQuestion}</strong>
               {practiceQuestionMeaning && <small>{practiceQuestionMeaning}</small>}
+              {practiceQuestionUrduMeaning && <small className="urdu-script" dir="rtl" lang="ur">{practiceQuestionUrduMeaning}</small>}
             </div>
           </div>
         )}

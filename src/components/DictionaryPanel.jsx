@@ -36,8 +36,8 @@ function SignInState({ onRequireAuth }) {
   return (
     <div className="dictionary-signin">
       <span><Languages size={25} /></span>
-      <h3>Your private learning dictionary</h3>
-      <p>Sign in to translate words, organise them into projects, and keep a personal search dashboard.</p>
+      <h3>Save your learning</h3>
+      <p>Word lookup works without an account. Sign in only to save words, create projects, and see your personal dashboard.</p>
       <button type="button" onClick={onRequireAuth}><LogIn size={16} /> Sign in to continue</button>
     </div>
   );
@@ -174,7 +174,6 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
   useEffect(() => {
     if (user) loadOverview();
     else {
-      setEntry(null);
       setOverview(EMPTY_OVERVIEW);
       setActiveProject(null);
       setProjectWords([]);
@@ -182,16 +181,12 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
   }, [loadOverview, user]);
 
   const performLookup = useCallback(async (termValue) => {
-    if (!user) {
-      onRequireAuth();
-      return;
-    }
     const term = termValue.trim();
     if (!term) return;
     const requestId = lookupRequestRef.current + 1;
     lookupRequestRef.current = requestId;
     lookupSocketRequestRef.current?.cancel();
-    const lookupCacheKey = `${user.id}:${term.toLocaleLowerCase()}`;
+    const lookupCacheKey = `${user?.id || 'guest'}:${term.toLocaleLowerCase()}`;
     const cachedLookup = lookupCache.get(lookupCacheKey);
     const freshCachedLookup = cachedLookup
       && Date.now() - cachedLookup.createdAt < CLIENT_CACHE_MS;
@@ -204,7 +199,7 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
     setSuggestionsOpen(false);
     try {
       let data;
-      if (realtimeStatus === 'ready') {
+      if (user && realtimeStatus === 'ready') {
         const liveRequest = realtimeClient.request('dictionary:lookup', { term }, {
           onEvent: (event) => {
             if (lookupRequestRef.current !== requestId) return;
@@ -233,7 +228,7 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
       setClientCache(lookupCache, lookupCacheKey, { entry: data.entry });
       setExistingMatches(data.existingMatches || []);
       setRelatedSaved(data.relatedSaved || []);
-      await loadOverview();
+      if (user) await loadOverview();
     } catch (requestError) {
       if (lookupRequestRef.current !== requestId) return;
       try {
@@ -244,7 +239,7 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
         setClientCache(lookupCache, lookupCacheKey, { entry: data.entry });
         setExistingMatches(data.existingMatches || []);
         setRelatedSaved(data.relatedSaved || []);
-        await loadOverview();
+        if (user) await loadOverview();
       } catch (fallbackError) {
         if (lookupRequestRef.current === requestId) setError(fallbackError.message || requestError.message);
       }
@@ -254,7 +249,7 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
         setLookupStage('');
       }
     }
-  }, [loadOverview, onRequireAuth, realtimeStatus, user]);
+  }, [loadOverview, realtimeStatus, user]);
 
   const searchWord = (event) => {
     event.preventDefault();
@@ -266,7 +261,7 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
     const requestId = suggestionRequestRef.current + 1;
     suggestionRequestRef.current = requestId;
     suggestionSocketRequestRef.current?.cancel();
-    if (!user || section !== 'lookup' || !term) {
+    if (section !== 'lookup' || !term) {
       setSuggestions([]);
       setSuggestionsLoading(false);
       setSuggestionsOpen(false);
@@ -275,7 +270,7 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
 
     setSuggestionsOpen(true);
     const normalizedTerm = term.toLocaleLowerCase();
-    const cacheKey = `${user.id}:${normalizedTerm}`;
+    const cacheKey = `${user?.id || 'guest'}:${normalizedTerm}`;
     const cached = suggestionCache.get(cacheKey);
     if (cached && Date.now() - cached.createdAt < CLIENT_CACHE_MS) {
       setSuggestions(cached.suggestions);
@@ -285,7 +280,7 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
       setSuggestionsLoading(true);
       try {
         let data;
-        if (realtimeStatus === 'ready') {
+        if (user && realtimeStatus === 'ready') {
           const liveRequest = realtimeClient.request('dictionary:suggest', { prefix: term });
           suggestionSocketRequestRef.current = liveRequest;
           data = liveRequest.requestId ? await liveRequest.promise : await dictionaryApi.getSuggestions(term);
@@ -321,7 +316,7 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
 
   useEffect(() => {
     const term = query.trim();
-    if (!user || section !== 'lookup' || !term) return undefined;
+    if (section !== 'lookup' || !term) return undefined;
     const autoSearchTimer = window.setTimeout(() => {
       if (lastLookedUpRef.current !== term.toLocaleLowerCase()) performLookup(term);
     }, 2000);
@@ -457,14 +452,21 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
             type="button"
             key={id}
             className={section === id ? 'active' : ''}
-            onClick={() => { setSection(id); setActiveProject(null); }}
+            onClick={() => {
+              if (!user && id !== 'lookup') {
+                onRequireAuth();
+                return;
+              }
+              setSection(id);
+              setActiveProject(null);
+            }}
           >
             <Icon size={15} /> {label}
           </button>
         ))}
       </nav>
 
-      {!user ? <SignInState onRequireAuth={onRequireAuth} /> : (
+      {(
         <>
           {(error || notice) && (
             <div className={`dictionary-feedback ${error ? 'error' : 'success'}`}>
@@ -528,8 +530,8 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
                             <small>{suggestion.partOfSpeech || 'word'}</small>
                           </span>
                           <span className="dictionary-suggestion-meaning">
-                            <strong dir="rtl" lang="ur">{suggestion.urdu}</strong>
                             <small>{suggestion.romanUrdu}</small>
+                            <strong dir="rtl" lang="ur">{suggestion.urdu}</strong>
                             {suggestion.projectName && <i><Folder size={11} /> {suggestion.projectName}</i>}
                           </span>
                         </button>
@@ -566,8 +568,8 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
                         {entry.pronunciation && <small>/{entry.pronunciation}/</small>}
                       </div>
                       <div className="dictionary-urdu-block">
-                        <strong dir="rtl" lang="ur">{entry.urdu}</strong>
                         <span>{entry.romanUrdu}</span>
+                        <strong dir="rtl" lang="ur">{entry.urdu}</strong>
                       </div>
                     </div>
                     <div className="dictionary-definition">
@@ -624,6 +626,8 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
               </section>
 
               <aside className="dictionary-save-panel">
+                {!user ? <SignInState onRequireAuth={onRequireAuth} /> : (
+                  <>
                 <div className="dictionary-card-heading">
                   <div><BookmarkPlus size={16} /><strong>Save this word</strong></div>
                 </div>
@@ -663,6 +667,8 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
                     onCancel={() => setCreatingProject(false)}
                   />
                 )}
+                  </>
+                )}
               </aside>
             </div>
           )}
@@ -689,8 +695,8 @@ export default function DictionaryPanel({ user, realtimeStatus, onRequireAuth })
                           </button>
                           <span>{word.partOfSpeech || 'word'}</span>
                           <h4>{word.term}</h4>
-                          <strong dir="rtl" lang="ur">{word.urdu}</strong>
                           <p>{word.romanUrdu}</p>
+                          <strong dir="rtl" lang="ur">{word.urdu}</strong>
                           <small>{word.searchCount} searches</small>
                         </article>
                       ))}

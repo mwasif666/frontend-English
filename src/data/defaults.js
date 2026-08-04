@@ -1,6 +1,6 @@
 export const LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
 
-export const DEFAULT_TOPICS = [
+const BASE_TOPICS = [
   {
     id: 'daily',
     label: 'Daily conversation',
@@ -128,6 +128,51 @@ export const DEFAULT_TOPICS = [
     starters: ['Let me say that again more clearly.', 'I will speak slowly and clearly.', 'Could you repeat the sentence?'],
   },
 ];
+
+const DEFAULT_MEANINGS = {
+  daily: {
+    roman: ['Aap subah uthne ke baad usually kya karte hain?', 'Aaj ke din ka sab se acha hissa kya tha?', 'Aap apna weekend usually kaise guzarte hain?', 'Kisi aise insaan ke bare mein batayein jis se baat karna aap ko pasand hai.'],
+    urdu: ['آپ صبح اٹھنے کے بعد عام طور پر کیا کرتے ہیں؟', 'آج کے دن کا سب سے اچھا حصہ کیا تھا؟', 'آپ اپنا ہفتہ وار آرام کا وقت کیسے گزارتے ہیں؟', 'کسی ایسے شخص کے بارے میں بتائیں جس سے بات کرنا آپ کو پسند ہے۔'],
+  },
+  interview: {
+    roman: ['Apna professional intro dein.', 'Aap ko is job mein interest kyun hai?', 'Apni ek success ke bare mein batayein jis par aap proud hain.', 'Aap mushkil deadline ko kaise handle karte hain?'],
+    urdu: ['اپنا پیشہ ورانہ تعارف دیں۔', 'آپ کو اس نوکری میں دلچسپی کیوں ہے؟', 'اپنی ایک کامیابی کے بارے میں بتائیں جس پر آپ کو فخر ہے۔', 'آپ مشکل آخری تاریخ کو کیسے سنبھالتے ہیں؟'],
+  },
+  business: {
+    roman: ['Aap project ki saaf update kaise dein ge?', 'Aap team ko delay ki wajah kaise batayein ge?', 'Meeting mein agree na hon to aap kya kahein ge?', 'Aap colleague se jaldi update kaise mangein ge?'],
+    urdu: ['آپ منصوبے کی واضح تازہ معلومات کیسے دیں گے؟', 'آپ ٹیم کو تاخیر کی وجہ کیسے بتائیں گے؟', 'اجلاس میں اختلاف ہو تو آپ کیا کہیں گے؟', 'آپ ساتھی سے فوری تازہ معلومات کیسے مانگیں گے؟'],
+  },
+  'client-project': {
+    roman: ['Aap client ko abhi ki progress kaise batayein ge?', 'Aap client se requirement saaf karne ko kaise kahein ge?', 'Trust khoye baghair delay kaise samjhayein ge?', 'Client extra kaam mange to aap kaise jawab dein ge?'],
+    urdu: ['آپ گاہک کو موجودہ کام کی پیش رفت کیسے بتائیں گے؟', 'آپ گاہک سے ضرورت واضح کرنے کو کیسے کہیں گے؟', 'اعتماد کھوئے بغیر تاخیر کیسے سمجھائیں گے؟', 'گاہک اضافی کام مانگے تو آپ کیسے جواب دیں گے؟'],
+  },
+  presentation: {
+    roman: ['Aap apni presentation shuru kaise karein ge?', 'Apne idea ka main faida kaise samjhayein ge?', 'Audience ke mushkil sawal ka jawab kaise dein ge?', 'Presentation ko confidence ke saath kaise khatam karein ge?'],
+    urdu: ['آپ اپنی پیشکش کیسے شروع کریں گے؟', 'اپنے خیال کا اہم فائدہ کیسے سمجھائیں گے؟', 'سامعین کے مشکل سوال کا جواب کیسے دیں گے؟', 'پیشکش کو اعتماد کے ساتھ کیسے ختم کریں گے؟'],
+  },
+  travel: {
+    roman: ['Hotel mein early check-in ke liye kaise poochein ge?', 'Luggage gum ho jaye to aap kya kahein ge?', 'Rasta politely kaise poochein ge?', 'Khana order karte waqt allergy kaise batayein ge?'],
+    urdu: ['ہوٹل میں جلد کمرہ لینے کے لیے کیسے پوچھیں گے؟', 'سامان گم ہو جائے تو آپ کیا کہیں گے؟', 'راستہ شائستگی سے کیسے پوچھیں گے؟', 'کھانا منگواتے وقت الرجی کا ذکر کیسے کریں گے؟'],
+  },
+  phone: {
+    roman: ['Business call par apna intro kaise dein ge?', 'Baat dobara kehne ke liye kaise kahein ge?', 'Saaf voice message kaise chhorein ge?', 'Agli meeting ka time kaise confirm karein ge?'],
+    urdu: ['کاروباری فون پر اپنا تعارف کیسے دیں گے؟', 'بات دوبارہ کہنے کے لیے کیسے کہیں گے؟', 'واضح صوتی پیغام کیسے چھوڑیں گے؟', 'اگلی ملاقات کا وقت کیسے پکا کریں گے؟'],
+  },
+  shopping: {
+    roman: ['Doosra size ya colour kaise mangein ge?', 'Politely refund kaise mangein ge?', 'Product ki advice kaise mangein ge?', 'Order ka problem kaise samjhayein ge?'],
+    urdu: ['دوسرا سائز یا رنگ کیسے مانگیں گے؟', 'شائستگی سے رقم واپس کیسے مانگیں گے؟', 'مصنوعہ کے بارے میں مشورہ کیسے مانگیں گے؟', 'آرڈر کا مسئلہ کیسے سمجھائیں گے؟'],
+  },
+  pronunciation: {
+    roman: ['Is sentence ko saaf bol kar dohrayein.', 'Is sentence ko slowly aur saaf boliye.', 'Har word ke stress par dhyan dein.', 'Sentence dobara confidence ke saath boliye.'],
+    urdu: ['اس جملے کو صاف بول کر دہرائیں۔', 'اس جملے کو آہستہ اور صاف بولیں۔', 'ہر لفظ کے زور پر دھیان دیں۔', 'جملہ دوبارہ اعتماد کے ساتھ بولیں۔'],
+  },
+};
+
+export const DEFAULT_TOPICS = BASE_TOPICS.map((topic) => ({
+  ...topic,
+  questionMeanings: DEFAULT_MEANINGS[topic.id]?.roman || [],
+  questionUrduMeanings: DEFAULT_MEANINGS[topic.id]?.urdu || [],
+}));
 
 export const EMPTY_DASHBOARD = {
   todayScore: 0,
