@@ -1,0 +1,53 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Test and build
+        run: npm run ci
+
+  production-smoke:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test-and-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Wait for Vercel and verify the live page
+        run: |
+          set -euo pipefail
+          passed=0
+          for attempt in $(seq 1 30); do
+            page="$(curl --fail --silent --show-error --max-time 15 https://frontend-english-ten.vercel.app || true)"
+            if PAGE="$page" node -e 'const page=process.env.PAGE || ""; if(!/<div id="root"><\/div>|<div id="root">/i.test(page)) process.exit(1)'; then
+              passed=1
+              break
+            fi
+            sleep 10
+          done
+          if [ "$passed" -ne 1 ]; then
+            echo "Frontend production smoke test did not pass after deployment retries."
+            exit 1
+          fi
